@@ -56,6 +56,13 @@
 #   （相對於 --password 參數）。--generate 模式產生
 #   secrets.token_urlsafe 隨機密碼並只顯示一次。
 #
+# 特殊機制（輸出編碼與憑證優先）：
+#   _ensure_utf8_output() 在註冊指令時把 stdout/stderr 轉為
+#   UTF-8 且 errors="replace"；_emit_credential() 保證一次性密碼
+#   先於任何裝飾性訊息輸出。兩者共同防止「帳號已建立但密碼
+#   永遠不顯示」的憑證遺失（曾在 Windows cp950 主控台實際發生）。
+#   詳細理由見兩個函式的 docstring。
+#
 # 已知限制與禁止事項：
 #   1. 禁止新增 --password 明碼參數（會留在 shell history 與
 #      process list 中）。若自動化確實需要，應改為讀取
@@ -77,6 +84,7 @@
 from __future__ import annotations
 
 import secrets
+import sys
 
 import click
 from flask.cli import AppGroup
@@ -90,8 +98,49 @@ from app.models.mixins import AuditAction
 _GENERATED_PASSWORD_BYTES = 18
 
 
+def _ensure_utf8_output() -> None:
+    """讓 CLI 輸出不會因主控台編碼而失敗。
+
+    為什麼這是安全性問題而不只是體驗問題：
+      Windows 主控台預設可能是 cp950/cp1252 等非 UTF-8 編碼。
+      本模組的訊息含中文與 ✔ 等字元，在這些編碼下 click.secho
+      會拋 UnicodeEncodeError。
+
+      致命之處在於崩潰的「時間點」：admin create --generate 會先
+      db.session.commit() 寫入帳號，再印出一次性密碼。若印出
+      成功訊息時崩潰，帳號已經存在但密碼永遠不會顯示，
+      而 SAI §8.2 又禁止建立第二個 active admin ——
+      使用者會得到一個無法登入也無法重建的帳號。
+      （此問題實際發生於 Windows cp950 環境。）
+
+      errors="replace" 保證輸出永不因編碼中斷：寧可少數字元
+      顯示為 '?'，也不能讓憑證遺失。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):  # pragma: no cover - 依終端機而定
+            # 少數被重導向的串流不支援 reconfigure；
+            # 此時維持原設定即可，下游仍有 errors="replace" 的保護。
+            pass
+
+
+def _emit_credential(label: str, password: str) -> None:
+    """輸出一次性密碼。
+
+    刻意先於任何裝飾性訊息呼叫（見 _ensure_utf8_output 的說明）：
+    憑證是這個指令唯一不可重現的產出，必須最優先送出。
+    """
+    click.echo(label)
+    click.echo(f"  {password}")
+
+
 def register_cli_commands(app) -> None:
     """把所有 CLI group 註冊到 app。"""
+    _ensure_utf8_output()
     admin_cli = AppGroup("admin", help="管理員帳號維護（SAI §8.2、§11.1）。")
     check_cli = AppGroup("check", help="內容品質與發布門檻檢查。")
     seed_cli = AppGroup("seed", help="母站內容遷移與初始化。")
@@ -156,10 +205,11 @@ def register_cli_commands(app) -> None:
         )
         db.session.commit()
 
-        click.secho(f"✔ 已建立管理員帳號：{normalized}", fg="green")
+        # 憑證優先輸出（見 _emit_credential 的說明）。
         if generate:
-            click.secho("  一次性密碼（請立即妥善保存，不會再次顯示）：", fg="yellow")
-            click.secho(f"  {password}", fg="yellow", bold=True)
+            _emit_credential("一次性密碼（請立即妥善保存，不會再次顯示）：", password)
+
+        click.secho(f"✔ 已建立管理員帳號：{normalized}", fg="green")
         click.echo("  登入位置：/admin/login")
 
     @admin_cli.command("reset-password")
@@ -194,10 +244,11 @@ def register_cli_commands(app) -> None:
         )
         db.session.commit()
 
-        click.secho(f"✔ 已重設 {user.username} 的密碼。", fg="green")
+        # 憑證優先輸出（見 _emit_credential 的說明）。
         if generate:
-            click.secho("  一次性密碼（請立即妥善保存）：", fg="yellow")
-            click.secho(f"  {password}", fg="yellow", bold=True)
+            _emit_credential("一次性密碼（請立即妥善保存）：", password)
+
+        click.secho(f"✔ 已重設 {user.username} 的密碼。", fg="green")
 
     @admin_cli.command("list")
     def list_admins():
