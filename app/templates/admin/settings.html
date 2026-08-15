@@ -1,0 +1,327 @@
+{#
+============================================================
+NTUST SiPh Lab - Admin Site Settings (/admin/settings)
+
+上下游：
+  blueprints/admin/routes.py::settings() -> 本模板
+  SiteSettingForm + parse_repeated() -> SettingsService
+
+檔案路徑：app/templates/admin/settings.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §15.4）：
+  六個設定分區，對應 SAI §15.4 的 Tab 表格：
+    Lab Identity / Homepage / Professor / Join & Contact /
+    SEO Defaults / Advanced
+
+  「Professor」不在此設定：SAI §15.4 明確說明
+  「若教授採 Person status=faculty，這裡只選 featured professor；
+   人物資料在 People 編輯」。本實作以 status=faculty 自動識別，
+   不需要額外的選擇欄位，因此該區塊改為指向 People 的說明。
+
+多值欄位（研究主題 / 可驗證事實 / 外部連結）：
+  以固定數量的空白列呈現（既有資料 + 3 列空白），
+  由 SiteSettingForm.parse_repeated() 依索引解析。
+  留空的列會被 SettingsService 的 _clean_* 過濾掉。
+
+  為什麼用固定空白列而非 JS 動態新增：
+    CSP 禁止 inline script，且純 HTML 方案在任何環境都可用。
+    研究主題最多 6 項（SAI §5.1），固定列數完全足夠。
+
+已知限制與禁止事項：
+  1. 禁止在此存放任何 secret（SAI §8.9）。
+  2. llms.txt 的說明文字必須明確標示為實驗性、非排名開關
+     （SAI §13.2、§15.4）。
+  3. production_base_url 僅供紀錄，實際 canonical 由環境變數
+     決定（見 settings_service.py 的說明）。
+
+驗證方式：
+  pytest tests/test_settings.py
+============================================================
+#}
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import field, checkbox, confirm_button %}
+
+{% block page_title %}網站設定{% endblock %}
+
+{% block page_desc %}
+<p class="admin-header__desc">
+  網站的名稱、首頁文案、研究方向、聯絡資訊與 SEO 預設值。
+  這裡的所有內容都會即時反映到公開網站。
+</p>
+{% endblock %}
+
+{% block content %}
+
+<form class="admin-form" method="post" enctype="multipart/form-data"
+      action="{{ url_for('admin.settings') }}">
+  {{ form.csrf_token }}
+
+  {# ---------- Lab Identity ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">研究室基本資料</legend>
+    <p class="form-section__hint">
+      名稱會出現在網站標題列、頁尾、瀏覽器標題與結構化資料中。
+    </p>
+    <div class="form-grid">
+      {{ field(form.lab_name_zh, required=true) }}
+      {{ field(form.lab_name_en, required=true) }}
+      {{ field(form.short_name) }}
+      {{ field(form.university_zh) }}
+      {{ field(form.university_en) }}
+      {{ field(form.department_zh) }}
+      {{ field(form.department_en) }}
+    </div>
+
+    <div style="margin-top: var(--space-5);">
+      {% if setting.logo_path %}
+      <div class="media-preview" style="margin-bottom: var(--space-4);">
+        <img src="{{ media_url(setting.logo_path) }}" alt="目前的研究室標誌">
+        <div>
+          <p class="media-preview__meta">目前檔案：{{ setting.logo_path }}</p>
+          <div style="margin-top: var(--space-3);">
+            {{ confirm_button(
+                url_for('admin.settings_media_delete', field='logo_path'),
+                '移除 Logo', confirm_form, 'btn btn--danger btn--small') }}
+          </div>
+        </div>
+      </div>
+      {% endif %}
+      {{ field(form.logo, full=true) }}
+    </div>
+  </fieldset>
+
+  {# ---------- Homepage ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">首頁</legend>
+    <p class="form-section__hint">
+      首頁主標應該說清楚「這個研究室在做什麼」，而不是空泛的口號。
+      建議直接寫出研究領域，例如具體的技術方向與應用場域。
+    </p>
+    <div class="form-grid">
+      {{ field(form.hero_title_zh, css='textarea', rows=2, full=true) }}
+      {{ field(form.hero_title_en, css='textarea', rows=2, full=true) }}
+      {{ field(form.hero_intro_zh, css='textarea', rows=3, full=true) }}
+      {{ field(form.hero_intro_en, css='textarea', rows=3, full=true) }}
+    </div>
+
+    <div style="margin-top: var(--space-5);">
+      {% if setting.hero_media_path %}
+      <div class="media-preview" style="margin-bottom: var(--space-4);">
+        <img src="{{ media_url(setting.hero_media_path) }}"
+             alt="{{ setting.hero_media_alt_zh or '目前的首頁主視覺' }}">
+        <div>
+          <p class="media-preview__meta">目前檔案：{{ setting.hero_media_path }}</p>
+          <div style="margin-top: var(--space-3);">
+            {{ confirm_button(
+                url_for('admin.settings_media_delete', field='hero_media_path'),
+                '移除主視覺', confirm_form, 'btn btn--danger btn--small') }}
+          </div>
+        </div>
+      </div>
+      {% endif %}
+      <div class="form-grid">
+        {{ field(form.hero_media, full=true) }}
+        {{ field(form.hero_media_alt_zh, full=true) }}
+      </div>
+    </div>
+  </fieldset>
+
+  {# ---------- 研究方向（多值） ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">研究方向</legend>
+    <p class="form-section__hint">
+      建議 3-6 項核心研究主題，會顯示在首頁與「關於研究室」頁。
+      說明欄可留空 —— 若尚未確定各主題的一句話定義，
+      請留空而不要填入推測內容。留空的列會被自動忽略。
+    </p>
+
+    <div class="repeat-group">
+      {% set focus_items = setting.research_focus + [{}, {}, {}] %}
+      {% for item in focus_items %}
+      <div class="repeat-row">
+        <div class="form-field">
+          <label class="form-field__label" for="focus-zh-{{ loop.index0 }}">主題名稱（中）</label>
+          <input class="input" id="focus-zh-{{ loop.index0 }}" type="text"
+                 name="research_focus-title_zh" value="{{ item.get('title_zh', '') }}">
+        </div>
+        <div class="form-field">
+          <label class="form-field__label" for="focus-en-{{ loop.index0 }}">主題名稱（英）</label>
+          <input class="input" id="focus-en-{{ loop.index0 }}" type="text"
+                 name="research_focus-title_en" value="{{ item.get('title_en', '') }}">
+        </div>
+        <div class="form-field">
+          <label class="form-field__label" for="focus-desc-{{ loop.index0 }}">一句話說明</label>
+          <input class="input" id="focus-desc-{{ loop.index0 }}" type="text"
+                 name="research_focus-description_zh" value="{{ item.get('description_zh', '') }}">
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </fieldset>
+
+  {# ---------- 可驗證事實（多值） ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">研究室事實（首頁）</legend>
+    <p class="form-section__hint">
+      <strong>只填寫可以查證的事實</strong>，例如合作單位、使用的量測設備、
+      參與的研究計畫。請勿填入無法驗證的宣稱或自我評價數字 ——
+      虛構的統計會損害研究室可信度（SAI §6.3）。
+      可附上來源網址供讀者查證。留空的列會被自動忽略。
+    </p>
+
+    <div class="repeat-group">
+      {% set proof_items = setting.lab_proof + [{}, {}, {}] %}
+      {% for item in proof_items %}
+      <div class="repeat-row">
+        <div class="form-field">
+          <label class="form-field__label" for="proof-label-{{ loop.index0 }}">項目名稱</label>
+          <input class="input" id="proof-label-{{ loop.index0 }}" type="text"
+                 name="lab_proof-label_zh" value="{{ item.get('label_zh', '') }}">
+        </div>
+        <div class="form-field">
+          <label class="form-field__label" for="proof-value-{{ loop.index0 }}">內容</label>
+          <input class="input" id="proof-value-{{ loop.index0 }}" type="text"
+                 name="lab_proof-value_zh" value="{{ item.get('value_zh', '') }}">
+        </div>
+        <div class="form-field">
+          <label class="form-field__label" for="proof-source-{{ loop.index0 }}">來源網址（選填）</label>
+          <input class="input" id="proof-source-{{ loop.index0 }}" type="url"
+                 name="lab_proof-source" value="{{ item.get('source', '') }}">
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </fieldset>
+
+  {# ---------- About ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">關於研究室</legend>
+    <p class="form-section__hint">
+      顯示在 /about 頁面。可說明研究室的定位、長期研究主軸，
+      以及使用的研究方法與設備。
+    </p>
+    <div class="form-grid">
+      {{ field(form.about_intro_zh, css='textarea', rows=5, full=true) }}
+      {{ field(form.about_methods_zh, css='textarea', rows=5, full=true) }}
+    </div>
+  </fieldset>
+
+  {# ---------- 教授（指向 People） ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">指導教授</legend>
+    <p class="form-section__hint">
+      教授的姓名、職稱、學歷、研究專長、Email、照片與外部連結
+      都在「研究成員」中維護（身分設為「教授」即可）。
+      系統會自動在首頁、關於頁與成員頁顯示該筆資料。
+    </p>
+    <p>
+      <a class="btn btn--secondary btn--small"
+         href="{{ url_for('admin.people_list', status='faculty') }}">前往編輯教授資料</a>
+    </p>
+  </fieldset>
+
+  {# ---------- Join & Contact ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">招募與聯絡</legend>
+    <div class="form-grid">
+      {{ field(form.contact_email) }}
+      {{ field(form.map_url) }}
+      {{ field(form.address_zh, css='textarea', rows=2, full=true) }}
+      {{ field(form.address_en, css='textarea', rows=2, full=true) }}
+      {{ field(form.join_title_zh, full=true) }}
+      {{ field(form.join_body_zh, css='textarea', rows=6, full=true) }}
+      {{ field(form.join_cta_label_zh) }}
+      {{ field(form.join_cta_url) }}
+    </div>
+  </fieldset>
+
+  {# ---------- 外部連結（多值，同時是 sameAs 來源） ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">外部連結</legend>
+    <p class="form-section__hint">
+      會顯示在頁尾，同時作為結構化資料的官方連結來源。
+      因為這些連結在頁面上實際可見，才符合結構化資料
+      「必須與可見內容一致」的規範（SAI §12.2）。
+    </p>
+    <div class="form-grid">
+      {{ field(form.official_ntust_url, full=true) }}
+    </div>
+
+    <div class="repeat-group" style="margin-top: var(--space-5);">
+      {% set link_items = setting.social_links + [{}, {}] %}
+      {% for item in link_items %}
+      <div class="repeat-row">
+        <div class="form-field">
+          <label class="form-field__label" for="link-label-{{ loop.index0 }}">顯示名稱</label>
+          <input class="input" id="link-label-{{ loop.index0 }}" type="text"
+                 name="social_links-label" value="{{ item.get('label', '') }}">
+        </div>
+        <div class="form-field">
+          <label class="form-field__label" for="link-url-{{ loop.index0 }}">網址</label>
+          <input class="input" id="link-url-{{ loop.index0 }}" type="url"
+                 name="social_links-url" value="{{ item.get('url', '') }}">
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </fieldset>
+
+  {# ---------- SEO Defaults ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">SEO 預設值</legend>
+    <p class="form-section__hint">
+      個別頁面留空時會使用這裡的預設值。各頁面的標題與描述
+      多數情況下會自動生成，不需要手動設定。
+    </p>
+    <div class="form-grid">
+      {{ field(form.default_title_suffix) }}
+      {{ field(form.production_base_url) }}
+      {{ field(form.default_description_zh, css='textarea', rows=2, full=true) }}
+    </div>
+
+    <div style="margin-top: var(--space-5);">
+      {% if setting.og_image_path %}
+      <div class="media-preview" style="margin-bottom: var(--space-4);">
+        <img src="{{ media_url(setting.og_image_path) }}" alt="目前的社群分享預設圖">
+        <div>
+          <p class="media-preview__meta">目前檔案：{{ setting.og_image_path }}</p>
+          <div style="margin-top: var(--space-3);">
+            {{ confirm_button(
+                url_for('admin.settings_media_delete', field='og_image_path'),
+                '移除分享圖', confirm_form, 'btn btn--danger btn--small') }}
+          </div>
+        </div>
+      </div>
+      {% endif %}
+      {{ field(form.og_image, full=true) }}
+    </div>
+  </fieldset>
+
+  {# ---------- Advanced ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">進階</legend>
+    <p class="form-section__hint">
+      以下為實驗性功能。Google 官方已明確說明，
+      針對 AI 搜尋功能<strong>不需要</strong> llms.txt 或任何特殊標記，
+      核心仍是高品質、可被抓取的網頁內容。
+      啟用此選項不會提升搜尋排名，也不保證任何 AI 工具會引用本站。
+    </p>
+    {{ checkbox(form.llms_txt_enabled, full=true) }}
+    <p class="form-field__hint" style="margin-top: var(--space-3);">
+      註：此開關還需要伺服器端的環境變數 <code>ENABLE_LLMS_TXT=true</code>
+      才會實際生效，屬於雙重確認機制。
+    </p>
+  </fieldset>
+
+  <div class="action-bar action-bar--sticky">
+    <button class="btn btn--primary" type="submit">儲存設定</button>
+    <a class="btn btn--secondary" href="{{ url_for('admin.dashboard') }}">取消</a>
+    <span class="action-bar__spacer"></span>
+    <span style="font-size: var(--text-xs); color: var(--color-ink-faint);">
+      最後更新：{{ setting.updated_at | local_datetime }}
+    </span>
+  </div>
+</form>
+
+{% endblock %}

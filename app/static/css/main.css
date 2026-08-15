@@ -1,0 +1,1424 @@
+/* ============================================================
+ * NTUST SiPh Lab - Public Site Styles (Photon Trace Editorial)
+ *
+ * 上下游：
+ *   tokens.css -> main.css（本檔）
+ *   templates/public/base.html 載入本檔
+ *   所有 templates/public/*.html 使用此處定義的元件 class
+ *
+ * 檔案路徑：
+ *   app/static/css/main.css
+ *
+ * 建立日期：2026-08-14
+ * 最後重大修改：2026-08-14
+ * 版本：v1.0
+ *
+ * 模組定位與責任邊界：
+ *   實作 SAI §6.1「Photon Trace Editorial」美學方向與
+ *   §17 Accessibility / Responsive 規格的公開站樣式。
+ *
+ *   責任邊界（不得做的事）：
+ *     - 不得寫死色碼、間距、圓角；一律使用 tokens.css 的 var()。
+ *     - 不得包含後台專用樣式（那在 admin.css）。
+ *     - 不得使用 !important 覆蓋 token（表示架構有問題）。
+ *
+ * 視覺語彙的來源（SAI §6.1）：
+ *   「微環 ring、waveguide 路徑、光訊號 trace、晶片/量測圖的
+ *    細線幾何」。本檔以三種方式落實，皆為 CSS 純幾何，
+ *   不需要圖檔也不會拖累 LCP：
+ *     1. .waveguide-rule  - 帶節點的細線分隔（波導路徑）
+ *     2. .trace-underline - 標題下的光訊號 trace 底線
+ *     3. .ring-marker     - 微環諧振器的同心圓標記
+ *
+ * 主要區塊：
+ *   1. Reset 與基礎排版
+ *   2. 可及性工具（skip link、focus、sr-only）
+ *   3. 版面容器與 editorial grid
+ *   4. Header / Nav / Footer
+ *   5. SiPh 視覺語彙元件
+ *   6. 內容元件（hero、卡片、清單、標籤、表格）
+ *   7. 頁面專屬區塊
+ *   8. 表單與按鈕
+ *   9. Responsive（含 320px 保護）
+ *
+ * 依賴：tokens.css（必須先載入）
+ *
+ * 已知限制與禁止事項（SAI §6.3 UI 禁止清單，逐條對應）：
+ *   1. 不使用紫藍漸層、玻璃擬態、發光圓球。
+ *   2. 不讓每個 section 都是三張等寬卡片 —— 本檔提供
+ *      .card-grid（自適應）、.stack-list（清單）、
+ *      .split-panel（不對稱雙欄）三種結構，
+ *      模板依內容語義選用。
+ *   3. 不提供虛構統計數字的樣式類別。
+ *   4. 裝飾性序號僅在 .ordered-steps 中使用（有順序意義）。
+ *   5. 不使用 hover-only 操作：所有互動元素在 focus 時
+ *      呈現相同狀態，觸控裝置以常駐樣式呈現。
+ *   6. body 字級為 17px（見 tokens.css 說明），不小於 16px。
+ *
+ * 維護契約：
+ *   1. 新增元件前先確認既有元件無法組合達成。
+ *   2. 任何互動元素都必須有 :focus-visible 樣式，
+ *      否則違反 §17 與 AC-16、AC-18。
+ *   3. 修改後必須在 320px 寬度檢查無橫向捲動（AC-15）。
+ *
+ * 驗證方式：
+ *   pytest tests/test_a11y.py
+ *   人工：320px / 768px / 1280px 三段檢視、Tab 鍵走訪全站
+ * ============================================================ */
+
+/* ============================================================
+ * 1. Reset 與基礎排版
+ * ============================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* 錨點跳轉時保留 header 高度，避免標題被固定 header 蓋住 */
+  scroll-padding-top: var(--space-20);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--color-ink);
+  background: var(--color-surface);
+  /* AC-15：320px 無橫向捲動的最後防線。
+     真正的解法是各元件都不超寬，此處僅作保險。 */
+  overflow-x: hidden;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0 0 var(--space-4);
+  line-height: var(--leading-tight);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--color-ink);
+  /* 中文標題不應斷字，避免詞語被拆開 */
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+h1 { font-size: var(--text-2xl); }
+h2 { font-size: var(--text-xl); }
+h3 { font-size: var(--text-lg); }
+h4 { font-size: var(--text-md); }
+
+p {
+  margin: 0 0 var(--space-4);
+  overflow-wrap: break-word;
+}
+
+/* 長文段落的行長限制（SAI §17 Long text）*/
+.prose p,
+.prose li {
+  max-width: var(--measure-text);
+}
+
+.prose {
+  line-height: var(--leading-normal);
+}
+
+.prose > :last-child {
+  margin-bottom: 0;
+}
+
+/* 保留使用者輸入的換行（研究方法/結果常有分行）*/
+.prose--preserve {
+  white-space: pre-line;
+}
+
+a {
+  color: var(--color-photon-deep);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+  transition: color var(--duration-fast) var(--easing-standard);
+}
+
+a:hover {
+  color: var(--color-ink);
+  text-decoration-thickness: 2px;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+ul, ol {
+  margin: 0 0 var(--space-4);
+  padding-left: var(--space-6);
+}
+
+li {
+  margin-bottom: var(--space-2);
+}
+
+hr {
+  border: 0;
+  border-top: var(--border-hairline);
+  margin: var(--space-12) 0;
+}
+
+code, kbd, samp {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+/* ============================================================
+ * 2. 可及性工具
+ * ============================================================ */
+
+/* Skip link（SAI §17 Keyboard、AC-18）。
+   平時以 transform 移出畫面而非 display:none ——
+   後者會讓螢幕閱讀器也讀不到。 */
+.skip-link {
+  position: absolute;
+  top: 0;
+  left: var(--space-4);
+  z-index: var(--z-skiplink);
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-navy);
+  color: var(--color-surface);
+  text-decoration: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  transform: translateY(-110%);
+  transition: transform var(--duration-base) var(--easing-standard);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+  color: var(--color-surface);
+}
+
+/* 全站統一焦點環（AC-16、AC-18）。
+   使用 :focus-visible 讓滑鼠點擊不顯示焦點環，
+   但鍵盤操作一定顯示。 */
+:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+  border-radius: var(--radius-sm);
+}
+
+/* 深底區塊上的焦點環改用亮色，確保可見 */
+.section--navy :focus-visible,
+.site-header :focus-visible,
+.site-footer :focus-visible {
+  outline-color: var(--color-photon-bright);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ============================================================
+ * 3. 版面容器與 editorial grid
+ * ============================================================ */
+
+.container {
+  width: 100%;
+  max-width: var(--content-max);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.container--narrow {
+  max-width: 820px;
+}
+
+main {
+  flex: 1;
+}
+
+.section {
+  padding-block: var(--space-16);
+}
+
+.section--tight {
+  padding-block: var(--space-12);
+}
+
+.section--muted {
+  background: var(--color-surface-muted);
+}
+
+.section--navy {
+  background: var(--color-navy);
+  color: var(--color-surface);
+}
+
+.section--navy h1,
+.section--navy h2,
+.section--navy h3 {
+  color: var(--color-surface);
+}
+
+.section--navy a {
+  color: var(--color-photon-bright);
+}
+
+.section--navy .section-label,
+.section--navy .text-muted {
+  color: #a9c0d4;
+}
+
+/* section 標題列：標籤 + 標題 + 右側連結。
+   不是三欄卡片，而是 editorial 的資訊層級（§6.3 第 2 條）。 */
+.section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
+}
+
+.section-label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+  margin-bottom: var(--space-2);
+}
+
+.section-title {
+  margin: 0;
+}
+
+.section-link {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+/* 不對稱雙欄：editorial 版面的核心結構（§6.1）。
+   刻意不是 1:1，避免落入通用模板感。 */
+.split-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: var(--space-12);
+  align-items: start;
+}
+
+.split-panel--reverse {
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+}
+
+/* 自適應卡片列。auto-fit + minmax 讓欄數依內容量與寬度決定，
+   而不是固定三欄（§6.3 第 2 條）。 */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: var(--space-6);
+}
+
+.card-grid--wide {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+}
+
+/* 垂直清單結構：適合有時序或層級的內容 */
+.stack-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.stack-list > li {
+  margin: 0;
+}
+
+/* ============================================================
+ * 4. Header / Nav / Footer
+ * ============================================================ */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header);
+  background: var(--color-navy);
+  color: var(--color-surface);
+  border-bottom: 1px solid var(--color-navy-soft);
+}
+
+.site-header__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  min-height: 64px;
+  padding-block: var(--space-3);
+}
+
+.site-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--color-surface);
+  text-decoration: none;
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+}
+
+.site-brand:hover {
+  color: var(--color-photon-bright);
+}
+
+.site-brand__logo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.site-brand__text {
+  display: flex;
+  flex-direction: column;
+}
+
+.site-brand__zh {
+  font-size: var(--text-base);
+}
+
+.site-brand__en {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
+  color: #a9c0d4;
+  letter-spacing: var(--tracking-wide);
+}
+
+/* 主導覽。
+   實作說明：不使用任何開合機制（見 base.html 的設計決策說明）。
+   6 個短標籤在窄螢幕自然換行成兩列，因此不需要漢堡選單，
+   也就不需要 JavaScript 或 <details> 的跨瀏覽器變通。
+   所有連結永遠可見且可 Tab 到達（AC-16、AC-18）。 */
+.site-nav__list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.site-nav__list > li {
+  margin: 0;
+}
+
+.site-nav__link {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  color: #d7e4ef;
+  text-decoration: none;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  border-radius: var(--radius-sm);
+  /* 以 border-bottom 標示目前頁面，同時保留文字色差 ——
+     不以顏色作為唯一訊息（§6.3、§17）。 */
+  border-bottom: 2px solid transparent;
+}
+
+.site-nav__link:hover {
+  color: var(--color-surface);
+  background: var(--color-navy-soft);
+}
+
+.site-nav__link[aria-current="page"] {
+  color: var(--color-photon-bright);
+  border-bottom-color: var(--color-photon-bright);
+  font-weight: var(--weight-semibold);
+}
+
+.site-footer {
+  background: var(--color-navy);
+  color: #c3d4e2;
+  padding-block: var(--space-12) var(--space-8);
+  margin-top: var(--space-20);
+  font-size: var(--text-sm);
+}
+
+.site-footer a {
+  color: var(--color-photon-bright);
+}
+
+.site-footer__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: var(--space-8);
+  margin-bottom: var(--space-8);
+}
+
+.site-footer__heading {
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: #8fa8bd;
+  margin-bottom: var(--space-3);
+}
+
+.site-footer__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.site-footer__list li {
+  margin-bottom: var(--space-2);
+}
+
+.site-footer__bottom {
+  border-top: 1px solid var(--color-navy-soft);
+  padding-top: var(--space-6);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  color: #8fa8bd;
+}
+
+/* ============================================================
+ * 5. SiPh 視覺語彙元件
+ *
+ * 全部以 CSS 幾何實作，無圖檔、無 JS。
+ * 這些是本站辨識度的來源（SAI §6.1），
+ * 也是「不套用通用 AI/SaaS 模板」的具體證據。
+ * ============================================================ */
+
+/* 波導路徑分隔線：一條細線 + 週期性節點，
+   模擬 waveguide 上的耦合點。 */
+.waveguide-rule {
+  position: relative;
+  height: 1px;
+  background: var(--color-line);
+  border: 0;
+  margin: var(--space-12) 0;
+  overflow: visible;
+}
+
+.waveguide-rule::before,
+.waveguide-rule::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid var(--color-photon);
+  background: var(--color-surface);
+  transform: translateY(-50%);
+}
+
+.waveguide-rule::before { left: 0; }
+.waveguide-rule::after { left: 64px; }
+
+/* 光訊號 trace 底線：標題下方的漸弱線段，
+   模擬量測圖上的訊號軌跡。 */
+.trace-underline {
+  position: relative;
+  padding-bottom: var(--space-3);
+}
+
+.trace-underline::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 72px;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    var(--color-photon) 0%,
+    var(--color-photon) 55%,
+    rgba(0, 166, 166, 0) 100%
+  );
+}
+
+.section--navy .trace-underline::after {
+  background: linear-gradient(
+    90deg,
+    var(--color-photon-bright) 0%,
+    var(--color-photon-bright) 55%,
+    rgba(46, 214, 214, 0) 100%
+  );
+}
+
+/* 微環標記：同心圓，用於研究主題項目的前導記號。 */
+.ring-marker {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--color-photon);
+  position: relative;
+  flex-shrink: 0;
+  margin-top: 0.35em;
+}
+
+.ring-marker::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  border: 1px solid var(--color-photon);
+  opacity: 0.55;
+}
+
+/* Hero 背景的細線幾何（晶片佈局感）。
+   使用 repeating-linear-gradient，成本極低且不需要圖檔。
+   刻意保持低對比，作為弱背景而非主角（§6.1 圖片規則）。 */
+.hero-grid-backdrop {
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      rgba(46, 214, 214, 0.07) 0 1px,
+      transparent 1px 72px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(46, 214, 214, 0.05) 0 1px,
+      transparent 1px 72px
+    );
+  pointer-events: none;
+}
+
+/* ============================================================
+ * 6. 內容元件
+ * ============================================================ */
+
+/* ---------- Hero（SAI §5.1：Hero 必須是 Lab 的論點）---------- */
+.hero {
+  position: relative;
+  background: var(--color-navy);
+  color: var(--color-surface);
+  padding-block: var(--space-20);
+  overflow: hidden;
+}
+
+.hero__inner {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: var(--space-12);
+  align-items: center;
+}
+
+.hero__eyebrow {
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-photon-bright);
+  margin-bottom: var(--space-4);
+}
+
+.hero__title {
+  font-size: var(--text-3xl);
+  color: var(--color-surface);
+  margin-bottom: var(--space-5);
+  max-width: 18ch;
+}
+
+.hero__intro {
+  font-size: var(--text-md);
+  color: #cfdeeb;
+  max-width: var(--measure-narrow);
+  margin-bottom: var(--space-8);
+}
+
+.hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.hero__media img {
+  width: 100%;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-navy-soft);
+}
+
+/* ---------- 卡片 ---------- */
+.card {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  height: 100%;
+  transition: border-color var(--duration-base) var(--easing-standard);
+}
+
+/* hover 與 focus-within 使用相同效果，
+   確保鍵盤與觸控使用者得到同等回饋（§6.3 第 5 條）。 */
+.card:hover,
+.card:focus-within {
+  border-color: var(--color-photon);
+}
+
+.card__title {
+  font-size: var(--text-lg);
+  margin-bottom: var(--space-2);
+}
+
+.card__title a {
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.card__title a:hover,
+.card__title a:focus-visible {
+  color: var(--color-photon-deep);
+  text-decoration: underline;
+}
+
+.card__meta {
+  font-size: var(--text-xs);
+  color: var(--color-ink-faint);
+  margin-bottom: var(--space-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+}
+
+.card__body {
+  color: var(--color-ink-soft);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-4);
+  flex: 1;
+}
+
+.card__footer {
+  margin-top: auto;
+  padding-top: var(--space-3);
+}
+
+/* ---------- 人物卡（SAI §5.2 列表卡規格）---------- */
+.person-card {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+  background: var(--color-surface);
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  height: 100%;
+  transition: border-color var(--duration-base) var(--easing-standard);
+}
+
+.person-card:hover,
+.person-card:focus-within {
+  border-color: var(--color-photon);
+}
+
+.person-card__photo {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
+}
+
+/* 無照片時的佔位。顯示姓名首字而非通用人形圖示 ——
+   前者仍傳達資訊，後者是純裝飾。 */
+.person-card__photo--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  color: var(--color-ink-faint);
+  border: 1px dashed var(--color-line);
+}
+
+.person-card__name {
+  font-size: var(--text-md);
+  margin-bottom: var(--space-1);
+}
+
+.person-card__name a {
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.person-card__name a:hover,
+.person-card__name a:focus-visible {
+  color: var(--color-photon-deep);
+  text-decoration: underline;
+}
+
+.person-card__role {
+  font-size: var(--text-xs);
+  color: var(--color-ink-faint);
+  margin-bottom: var(--space-3);
+}
+
+.person-card__focus {
+  font-size: var(--text-sm);
+  color: var(--color-ink-soft);
+  margin-bottom: var(--space-3);
+  /* 列表卡不塞完整履歷（SAI §5.2）：限制為 2 行 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/* ---------- 標籤 ---------- */
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tag-list > li {
+  margin: 0;
+}
+
+.tag {
+  display: inline-block;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-ink-soft);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-pill);
+}
+
+/* 成果類型 badge。以邊框 + 文字表達，不只靠顏色（§6.3）。 */
+.type-badge {
+  display: inline-block;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  color: var(--color-photon-deep);
+  border: 1px solid var(--color-photon);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.year-badge {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-ink-faint);
+}
+
+/* ---------- 定義列表（人物/成果 metadata）---------- */
+.meta-list {
+  display: grid;
+  grid-template-columns: minmax(96px, auto) minmax(0, 1fr);
+  gap: var(--space-3) var(--space-5);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.meta-list dt {
+  color: var(--color-ink-faint);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  padding-top: 0.15em;
+}
+
+.meta-list dd {
+  margin: 0;
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 研究主題項目 ---------- */
+.focus-item {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+
+.focus-item__title {
+  font-size: var(--text-md);
+  margin-bottom: var(--space-1);
+}
+
+.focus-item__desc {
+  font-size: var(--text-sm);
+  color: var(--color-ink-soft);
+  margin: 0;
+}
+
+/* ---------- 空狀態 ---------- */
+/* SAI §14.3 publish gate 要求拒絕空/薄頁面。
+   當某區塊確實沒有資料時，以誠實的說明取代假內容
+   （§6.3 禁止虛構數據填版）。 */
+.empty-state {
+  border: 1px dashed var(--color-line);
+  border-radius: var(--radius-md);
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--color-ink-soft);
+  background: var(--color-surface-muted);
+}
+
+.empty-state__title {
+  font-size: var(--text-md);
+  margin-bottom: var(--space-2);
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+/* ---------- 麵包屑（與 BreadcrumbList JSON-LD 對應）---------- */
+.breadcrumb {
+  font-size: var(--text-xs);
+  color: var(--color-ink-faint);
+  padding-block: var(--space-5) 0;
+}
+
+.breadcrumb ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.breadcrumb li {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.breadcrumb li + li::before {
+  content: "/";
+  color: var(--color-line);
+}
+
+/* ---------- 篩選器 ---------- */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-end;
+  padding: var(--space-5);
+  background: var(--color-surface-muted);
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-8);
+}
+
+.filter-bar__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.filter-bar__label {
+  font-size: var(--text-xs);
+  color: var(--color-ink-faint);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+/* ---------- 年度分組（Alumni）---------- */
+.year-group {
+  margin-bottom: var(--space-12);
+}
+
+.year-group__heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 2px solid var(--color-ink);
+  margin-bottom: var(--space-6);
+}
+
+.year-group__year {
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  margin: 0;
+}
+
+.year-group__count {
+  font-size: var(--text-sm);
+  color: var(--color-ink-faint);
+}
+
+/* ---------- 有順序意義的步驟（§6.3 第 4 條）---------- */
+.ordered-steps {
+  counter-reset: step;
+  list-style: none;
+  padding: 0;
+}
+
+.ordered-steps > li {
+  counter-increment: step;
+  position: relative;
+  padding-left: var(--space-10);
+  margin-bottom: var(--space-6);
+}
+
+.ordered-steps > li::before {
+  content: counter(step, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--color-photon-deep);
+  font-weight: var(--weight-semibold);
+}
+
+/* ============================================================
+ * 7. 頁面專屬區塊
+ * ============================================================ */
+
+/* ---------- 人物詳細頁首屏（SAI §5.2）---------- */
+.person-hero {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: var(--space-10);
+  align-items: start;
+  padding-block: var(--space-12);
+}
+
+.person-hero__photo {
+  width: 200px;
+  height: 240px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+}
+
+.person-hero__title {
+  margin-bottom: var(--space-2);
+}
+
+.person-hero__name-en {
+  display: block;
+  font-size: var(--text-md);
+  font-weight: var(--weight-regular);
+  color: var(--color-ink-faint);
+  letter-spacing: var(--tracking-normal);
+  margin-top: var(--space-1);
+}
+
+.person-hero__role {
+  font-size: var(--text-sm);
+  color: var(--color-ink-faint);
+  margin-bottom: var(--space-4);
+}
+
+.person-hero__focus {
+  font-size: var(--text-md);
+  color: var(--color-ink);
+  max-width: var(--measure-narrow);
+  margin-bottom: var(--space-6);
+}
+
+.link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.link-row > li {
+  margin: 0;
+}
+
+.link-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  border: var(--border-hairline);
+  border-radius: var(--radius-pill);
+  text-decoration: none;
+  color: var(--color-ink);
+  /* 觸控目標高度（SAI §17 Touch）*/
+  min-height: 40px;
+}
+
+.link-chip:hover,
+.link-chip:focus-visible {
+  border-color: var(--color-photon);
+  color: var(--color-photon-deep);
+}
+
+/* ---------- 成果詳細頁（SAI §5.3 的區塊結構）---------- */
+.output-header {
+  padding-block: var(--space-12) var(--space-8);
+  border-bottom: var(--border-hairline);
+  margin-bottom: var(--space-10);
+}
+
+.output-header__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  margin-bottom: var(--space-5);
+}
+
+.output-header__title {
+  max-width: 28ch;
+  margin-bottom: var(--space-4);
+}
+
+.output-header__title-en {
+  font-size: var(--text-md);
+  font-weight: var(--weight-regular);
+  color: var(--color-ink-soft);
+  max-width: var(--measure-text);
+  margin-bottom: var(--space-4);
+}
+
+.output-body {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 4fr);
+  gap: var(--space-12);
+  align-items: start;
+}
+
+.output-section {
+  margin-bottom: var(--space-10);
+}
+
+.output-section__title {
+  font-size: var(--text-lg);
+  margin-bottom: var(--space-3);
+}
+
+.output-aside {
+  position: sticky;
+  top: 88px;
+  padding: var(--space-6);
+  background: var(--color-surface-muted);
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+}
+
+.output-aside__title {
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+  margin-bottom: var(--space-3);
+}
+
+.output-hero-image {
+  width: 100%;
+  border-radius: var(--radius-md);
+  border: var(--border-hairline);
+  margin-bottom: var(--space-8);
+}
+
+.figure-caption {
+  font-size: var(--text-xs);
+  color: var(--color-ink-faint);
+  margin-top: var(--space-2);
+}
+
+/* ---------- 最後更新（SAI §13.1 Freshness）---------- */
+.last-updated {
+  font-size: var(--text-xs);
+  color: var(--color-ink-faint);
+  padding-top: var(--space-6);
+  margin-top: var(--space-8);
+  border-top: var(--border-hairline);
+}
+
+/* ---------- 下一步導覽（SAI §5.2 頁尾：不得有死路）---------- */
+.next-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  padding-block: var(--space-8);
+}
+
+/* ============================================================
+ * 8. 表單與按鈕
+ * ============================================================ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  /* 最小觸控高度 44px（SAI §17 Touch）*/
+  min-height: 44px;
+  padding: var(--space-3) var(--space-6);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  line-height: 1.2;
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--easing-standard),
+    border-color var(--duration-fast) var(--easing-standard),
+    color var(--duration-fast) var(--easing-standard);
+}
+
+.btn--primary {
+  background: var(--color-photon-deep);
+  color: var(--color-surface);
+  border-color: var(--color-photon-deep);
+}
+
+.btn--primary:hover {
+  background: #005a5a;
+  border-color: #005a5a;
+  color: var(--color-surface);
+}
+
+.btn--secondary {
+  background: transparent;
+  color: var(--color-ink);
+  border-color: var(--color-line);
+}
+
+.btn--secondary:hover {
+  border-color: var(--color-ink);
+  color: var(--color-ink);
+}
+
+/* 深底上的次要按鈕 */
+.section--navy .btn--secondary,
+.hero .btn--secondary {
+  color: var(--color-surface);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.section--navy .btn--secondary:hover,
+.hero .btn--secondary:hover {
+  border-color: var(--color-photon-bright);
+  color: var(--color-photon-bright);
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-photon-deep);
+  padding-inline: var(--space-2);
+}
+
+.btn--small {
+  min-height: 36px;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-xs);
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-3) var(--space-4);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+}
+
+.textarea {
+  min-height: 120px;
+  line-height: var(--leading-snug);
+  resize: vertical;
+}
+
+.input:focus-visible,
+.select:focus-visible,
+.textarea:focus-visible {
+  border-color: var(--color-photon-deep);
+}
+
+/* ============================================================
+ * 9. Responsive
+ *
+ * 斷點選擇理由：
+ *   960px - 雙欄版面在此以下會讓每欄過窄，改為單欄
+ *   640px - 導覽改為展開式、卡片內部改為堆疊
+ *   360px - 極窄裝置的最後調整（AC-15 要求 320px 可用）
+ * ============================================================ */
+
+@media (max-width: 960px) {
+  .hero__inner,
+  .split-panel,
+  .split-panel--reverse,
+  .output-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-8);
+  }
+
+  .person-hero {
+    grid-template-columns: 160px minmax(0, 1fr);
+    gap: var(--space-6);
+  }
+
+  .person-hero__photo {
+    width: 160px;
+    height: 192px;
+  }
+
+  .output-aside {
+    position: static;
+  }
+
+  .hero {
+    padding-block: var(--space-16);
+  }
+
+  .section {
+    padding-block: var(--space-12);
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --gutter: var(--space-4);
+  }
+
+  .hero__title {
+    font-size: var(--text-2xl);
+    max-width: none;
+  }
+
+  /* 行動版導覽：header 改為上下堆疊，導覽自然換行成兩列。
+     不使用漢堡選單（理由見 base.html 的設計決策說明）。 */
+  .site-header__inner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding-block: var(--space-4);
+  }
+
+  .site-nav {
+    width: 100%;
+  }
+
+  .site-nav__list {
+    justify-content: flex-start;
+    gap: var(--space-1) var(--space-2);
+  }
+
+  .site-nav__link {
+    padding: var(--space-2);
+    font-size: var(--text-xs);
+  }
+
+  .person-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .person-hero__photo {
+    width: 140px;
+    height: 168px;
+  }
+
+  .meta-list {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1) 0;
+  }
+
+  .meta-list dd {
+    margin-bottom: var(--space-3);
+  }
+
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 360px) {
+  /* 極窄裝置：人物卡改為上下堆疊，避免 96px 照片 + 文字擠壓
+     （AC-15：320px 無橫向捲動）。 */
+  .person-card {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+
+  .hero__title {
+    font-size: var(--text-xl);
+  }
+}
+
+/* ============================================================
+ * 列印樣式
+ *
+ * 研究成果頁常被列印或存成 PDF 作為引用依據，
+ * 因此提供最基本的列印優化：移除導覽與裝飾，保留內容與連結。
+ * ============================================================ */
+@media print {
+  .site-header,
+  .site-footer,
+  .next-steps,
+  .filter-bar,
+  .skip-link {
+    display: none;
+  }
+
+  body {
+    color: #000;
+    background: #fff;
+    font-size: 11pt;
+  }
+
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 9pt;
+    color: #444;
+  }
+}

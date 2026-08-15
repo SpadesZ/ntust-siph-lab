@@ -1,0 +1,69 @@
+# ============================================================
+# NTUST SiPh Lab - Docker Build Context Exclusions
+#
+# 檔案路徑：.dockerignore
+# 建立日期：2026-08-14 / 版本：v1.0
+#
+# 目的：
+#   1. 安全 —— 避免 .env、金鑰、資料庫檔案被打包進 image
+#      並永久留在 layer 中（SAI §11.2 Secret leak）。
+#   2. 正確性 —— image 不得內建資料。資料一律來自
+#      bind mount（local）或 Cloud SQL/GCS（production）。
+#   3. 速度 —— 縮小 build context。
+#
+# 維護契約：
+#   新增任何會產生本機狀態或機密的目錄時，必須同步加入此檔
+#   與 .gitignore。
+# ============================================================
+
+# --- 機密與環境設定 ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+service-account*.json
+
+# --- 本機資料（絕不進入 image）---
+instance/
+uploads/
+backups/
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+
+# --- Python 開發產物 ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- 版本控制與編輯器 ---
+.git/
+.gitignore
+.gitattributes
+.idea/
+.vscode/
+.claude/
+
+# --- 文件與測試（不需要進入執行環境）---
+docs/
+tests/
+legacy/
+deploy/
+skills/
+README.md
+*.md
+
+# --- 容器設定本身 ---
+Dockerfile
+docker-compose*.yml
+.dockerignore

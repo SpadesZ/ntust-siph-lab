@@ -1,0 +1,181 @@
+{#
+============================================================
+NTUST SiPh Lab - Research Index (/research)
+
+上下游：
+  blueprints/public/routes.py::research_index() -> 本模板
+  資料：outputs、available_years、available_types、
+       active_type / active_year / active_query
+
+檔案路徑：app/templates/public/research_index.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §4.1）：
+  研究成果總覽與篩選。
+
+篩選器設計（重要）：
+  使用 GET 表單（method="get"）而非 JavaScript：
+    1. 篩選結果有可分享的 URL。
+    2. 無 JS 環境仍完全可用（SAI §6.3 第 5 條的精神）。
+    3. 伺服器端渲染，符合 ADR-001 與 §18（首屏不等 JS）。
+
+  canonical 不含篩選參數（SAI §4.2：列表排序、追蹤參數
+  不可產生新的 canonical）—— 由 SEOService 保證，
+  本模板不需處理。
+
+已知限制與禁止事項：
+  1. 只顯示 published（AC-08、AC-09）。
+  2. 篩選選項只列出「實際有資料」的年份與型別
+     （見 research_repo.available_types 的說明），
+     避免產生可被索引的空結果頁（SAI §14.3）。
+  3. 每頁唯一 h1（AC-18）。
+
+驗證方式：
+  pytest tests/test_research.py
+============================================================
+#}
+{% extends "public/base.html" %}
+
+{% block breadcrumb_current %}研究成果{% endblock %}
+
+{% block content %}
+<div class="container">
+
+  <header class="section section--tight">
+    <span class="section-label">Research Outputs</span>
+    <h1 class="trace-underline">研究成果</h1>
+    <p class="prose" style="max-width: var(--measure-narrow); margin-top: var(--space-5);">
+      {{ settings.lab_name_zh }}的期刊論文、會議論文、研究專案、原型系統與模擬研究。
+      每筆成果都說明其研究問題、方法、主要結果與意義。
+    </p>
+  </header>
+
+  {# ---------- 篩選器（GET 表單，無需 JS） ---------- #}
+  {% if available_types or available_years %}
+  <form class="filter-bar" method="get" action="{{ url_for('public.research_index') }}"
+        role="search" aria-label="研究成果篩選">
+
+    {% if available_types %}
+    <div class="filter-bar__field">
+      <label class="filter-bar__label" for="filter-type">成果類型</label>
+      <select class="select" id="filter-type" name="type">
+        <option value="">全部類型</option>
+        {% for t in available_types %}
+        <option value="{{ t }}" {% if active_type == t %}selected{% endif %}>
+          {{ type_labels[t] }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
+    {% if available_years %}
+    <div class="filter-bar__field">
+      <label class="filter-bar__label" for="filter-year">年份</label>
+      <select class="select" id="filter-year" name="year">
+        <option value="">全部年份</option>
+        {% for y in available_years %}
+        <option value="{{ y }}" {% if active_year == y %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
+    <div class="filter-bar__field" style="flex: 1; min-width: 180px;">
+      <label class="filter-bar__label" for="filter-q">關鍵字</label>
+      <input class="input" type="search" id="filter-q" name="q"
+             value="{{ active_query or '' }}" placeholder="標題、摘要或關鍵字">
+    </div>
+
+    <div class="filter-bar__field">
+      <button class="btn btn--primary" type="submit">套用篩選</button>
+    </div>
+
+    {% if active_type or active_year or active_query %}
+    <div class="filter-bar__field">
+      <a class="btn btn--ghost" href="{{ url_for('public.research_index') }}">清除</a>
+    </div>
+    {% endif %}
+  </form>
+  {% endif %}
+
+  {# ---------- 成果清單 ---------- #}
+  <section class="section section--tight" aria-labelledby="outputs-heading">
+    <h2 class="sr-only" id="outputs-heading">研究成果清單</h2>
+
+    {% if outputs %}
+    <p class="section-label" style="margin-bottom: var(--space-6);">
+      共 {{ outputs | length }} 筆成果
+    </p>
+
+    <ul class="stack-list">
+      {% for output in outputs %}
+      <li>
+        <article class="card">
+          <div class="card__meta">
+            <span class="type-badge">{{ output.type_label_zh }}</span>
+            <span class="year-badge">{{ output.year }}</span>
+            {% if output.venue %}<span>{{ output.venue }}</span>{% endif %}
+          </div>
+
+          <h3 class="card__title">
+            <a href="{{ url_for('public.research_detail', slug=output.slug) }}">
+              {{ output.display_title }}
+            </a>
+          </h3>
+
+          {% if output.title_en and output.title_zh %}
+          <p class="card__meta"><em>{{ output.title_en }}</em></p>
+          {% endif %}
+
+          {% if output.summary_zh or output.summary_en %}
+          <p class="card__body">
+            {{ (output.summary_zh or output.summary_en) | truncate(160, true, '…') }}
+          </p>
+          {% endif %}
+
+          {# Lab 作者：建立 Person <-> Research 的雙向導航（AC-07） #}
+          {% if output.public_lab_people %}
+          <p class="card__meta">
+            {% for person in output.public_lab_people %}
+            <a href="{{ url_for('public.person_detail', slug=person.slug) }}">{{ person.name_zh }}</a>{% if not loop.last %}、{% endif %}
+            {% endfor %}
+          </p>
+          {% endif %}
+
+          {% if output.keywords %}
+          <ul class="tag-list card__footer">
+            {% for keyword in output.keywords[:5] %}
+            <li><span class="tag">{{ keyword }}</span></li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </article>
+      </li>
+      {% endfor %}
+    </ul>
+
+    {% else %}
+    <div class="empty-state">
+      {% if active_type or active_year or active_query %}
+      <p class="empty-state__title">沒有符合篩選條件的成果</p>
+      <p>
+        請調整篩選條件，或
+        <a href="{{ url_for('public.research_index') }}">查看全部研究成果</a>。
+      </p>
+      {% else %}
+      <p class="empty-state__title">尚未發布研究成果</p>
+      <p>研究成果由管理者於後台新增並發布後，會在此顯示。</p>
+      {% endif %}
+    </div>
+    {% endif %}
+  </section>
+
+  <nav class="next-steps" aria-label="延伸瀏覽">
+    <a class="btn btn--secondary" href="{{ url_for('public.members') }}">認識研究成員</a>
+    <a class="btn btn--secondary" href="{{ url_for('public.about') }}">了解研究方向</a>
+    <a class="btn btn--primary" href="{{ url_for('public.join') }}">加入研究室</a>
+  </nav>
+
+</div>
+{% endblock %}

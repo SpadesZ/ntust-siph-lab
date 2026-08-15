@@ -1,0 +1,103 @@
+{#
+============================================================
+NTUST SiPh Lab - Admin Login (/admin/login)
+
+上下游：
+  blueprints/auth/routes.py::login() -> 本模板
+  LoginForm（含 CSRF token）-> POST /admin/login
+
+檔案路徑：app/templates/admin/login.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §7.1、AC-01~AC-03、AC-16）：
+  單一管理員登入頁。
+
+為什麼不繼承 admin/base.html：
+  base.html 的側選單包含登出表單與 current_user，
+  未登入狀態下那些都不適用；且登入頁應是最小攻擊面，
+  不需要載入任何後台導覽結構。
+
+可及性（AC-16：鍵盤可完成 admin login）：
+  1. autofocus 在帳號欄位（由 LoginForm 的 render_kw 設定）。
+  2. autocomplete="username" / "current-password" 讓密碼
+     管理器正確運作，減少使用者手動輸入錯誤。
+  3. label 與 input 由 WTForms 的 id 自動對應。
+  4. 錯誤訊息有 role="alert"，螢幕閱讀器會即時朗讀。
+
+安全：
+  1. 錯誤訊息一律為「帳號或密碼不正確」，不區分帳號是否存在
+     （見 auth/routes.py 的 user enumeration 說明）。
+  2. 表單含 CSRF token。
+  3. 頁面 noindex, nofollow。
+
+驗證方式：
+  pytest tests/test_auth.py
+============================================================
+#}
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>管理員登入 | {{ settings.lab_name_zh }}</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+</head>
+<body>
+  <div class="login-shell">
+    <div class="hero-grid-backdrop" aria-hidden="true"></div>
+
+    <main class="login-card">
+      <div class="login-card__brand">
+        <h1>{{ settings.lab_name_zh }}</h1>
+        <p>Content Management</p>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <ul class="flash-list">
+        {% for category, message in messages %}
+        <li class="flash flash--{{ category if category in ['success', 'error', 'warning', 'info'] else 'info' }}"
+            role="alert">
+          <span>{{ message }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% endwith %}
+
+      <form method="post" action="{{ url_for('auth.login') }}" class="admin-form">
+        {{ form.csrf_token }}
+
+        <div class="form-field {% if form.username.errors %}form-field--has-error{% endif %}">
+          {{ form.username.label(class='form-field__label') }}
+          {{ form.username(class='input') }}
+          {% if form.username.errors %}
+          <p class="form-field__error" role="alert">{{ form.username.errors | join('；') }}</p>
+          {% endif %}
+        </div>
+
+        <div class="form-field {% if form.password.errors %}form-field--has-error{% endif %}">
+          {{ form.password.label(class='form-field__label') }}
+          {{ form.password(class='input') }}
+          {% if form.password.errors %}
+          <p class="form-field__error" role="alert">{{ form.password.errors | join('；') }}</p>
+          {% endif %}
+        </div>
+
+        <button class="btn btn--primary" type="submit" style="width: 100%;">登入</button>
+      </form>
+
+      <p style="margin-top: var(--space-6); font-size: var(--text-xs); color: var(--color-ink-faint);">
+        忘記密碼請於伺服器端執行 <code>flask admin reset-password</code>（SAI §11.1）。
+      </p>
+
+      <p style="margin-top: var(--space-4); font-size: var(--text-xs);">
+        <a href="{{ url_for('public.home') }}">← 回到公開網站</a>
+      </p>
+    </main>
+  </div>
+</body>
+</html>

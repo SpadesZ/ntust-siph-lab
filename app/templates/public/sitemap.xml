@@ -1,0 +1,49 @@
+{#-
+============================================================
+NTUST SiPh Lab - sitemap.xml Template
+
+上下游：
+  public/routes.py::sitemap_xml() -> SEOService.sitemap_entries()
+      -> 本模板 -> Response(mimetype="application/xml")
+
+檔案路徑：app/templates/public/sitemap.xml
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §12.1）：
+  「只收 published canonical pages；updated_at 作 lastmod」。
+  對應 AC-08（draft 不得出現）與 AC-09（published 必須出現）。
+
+重要實作細節：
+  1. 檔案第一行必須是 XML 宣告，前面不能有任何空白或換行，
+     否則部分解析器會拒絕。因此本註解區塊的起訖標記都加上
+     連字號以去除左右空白。
+  2. 註解內文「絕對不可」出現 Jinja 註解的結束標記字元組合。
+     Jinja 不支援巢狀註解，一旦內文出現該組合就會提前結束註解，
+     其後的說明文字會被當成模板內容直接輸出到 XML 中，
+     使 sitemap 變成無效文件。此問題曾實際發生過。
+  3. lastmod 使用 W3C Datetime（含時區偏移），
+     由 utils/dates.iso_datetime 產生。
+  4. 不輸出 priority 以外的非標準欄位。
+
+維護契約：
+  新增公開頁面時必須在 SEOService.sitemap_entries() 決定是否收錄，
+  本模板不需修改。
+
+驗證方式：
+  pytest tests/test_seo.py::test_sitemap_excludes_draft
+  curl http://localhost:8000/sitemap.xml | xmllint --noout -
+============================================================
+-#}
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+{% for entry in entries %}
+  <url>
+    <loc>{{ entry.loc }}</loc>
+{% if entry.lastmod %}
+    <lastmod>{{ entry.lastmod }}</lastmod>
+{% endif %}
+    <changefreq>{{ entry.changefreq }}</changefreq>
+    <priority>{{ entry.priority }}</priority>
+  </url>
+{% endfor %}
+</urlset>

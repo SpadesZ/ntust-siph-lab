@@ -1,0 +1,172 @@
+{#
+============================================================
+NTUST SiPh Lab - Admin Dashboard (/admin)
+
+上下游：
+  blueprints/admin/routes.py::dashboard() -> 本模板
+  資料：person_counts、research_counts、issues、recent、
+       health、redirect_count、legacy_pending
+
+檔案路徑：app/templates/admin/dashboard.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §7.2）：
+  規定的四個區塊 + System health：
+    Quick actions   -> 新增研究成果 / 新增在學成員 / 新增畢業生
+    Content status  -> Published / Draft 數量，點擊進篩選列表
+    Needs attention -> 缺 alt、缺英文標題、缺 meta description 等
+    Recent changes  -> 最近 10 筆修改
+    System health   -> DB writable、upload writable、backup last success
+
+設計重點：
+  Needs attention 的每一項都直接連到該筆內容的編輯頁。
+  SAI §7.2 寫的是「點擊進篩選列表」，但對「單筆內容的品質
+  問題」而言，直接到編輯頁比先到列表再找更快，
+  更符合 §3 的「3-5 分鐘完成一般編輯」目標。
+  Content status 的數字則維持連到篩選列表（符合原文）。
+
+已知限制與禁止事項：
+  1. 品質提醒不阻擋草稿（SAI §7.2 明文）。
+  2. 禁止在此顯示任何 secret、連線字串或檔案系統絕對路徑
+     以外的敏感資訊（System health 的路徑僅管理員可見）。
+
+驗證方式：
+  pytest tests/test_admin.py::test_dashboard_renders
+============================================================
+#}
+{% extends "admin/base.html" %}
+
+{% block page_title %}Dashboard{% endblock %}
+
+{% block page_desc %}
+<p class="admin-header__desc">
+  內容狀態總覽、品質提醒與系統健康檢查。
+</p>
+{% endblock %}
+
+{% block header_actions %}
+{# Quick actions（SAI §7.2：一鍵進表單） #}
+<div style="display: flex; gap: var(--space-3); flex-wrap: wrap;">
+  <a class="btn btn--primary btn--small" href="{{ url_for('admin.research_new') }}">新增研究成果</a>
+  <a class="btn btn--secondary btn--small" href="{{ url_for('admin.person_new') }}">新增成員</a>
+</div>
+{% endblock %}
+
+{% block content %}
+
+{# ---------- Content status ---------- #}
+<section aria-labelledby="content-status-heading">
+  <h2 class="admin-panel__title" id="content-status-heading">內容狀態</h2>
+
+  <div class="stat-grid">
+    {% set status_labels = {'faculty': '教授', 'current': '在學成員', 'alumni': '畢業生'} %}
+    {% for status, label in status_labels.items() %}
+    {% set counts = person_counts.get(status, {}) %}
+    <div class="stat-card">
+      <p class="stat-card__label">{{ label }}</p>
+      <p class="stat-card__value">{{ counts.get('published', 0) }}</p>
+      <div class="stat-card__breakdown">
+        <a href="{{ url_for('admin.people_list', status=status, publish_status='published') }}">已發布 {{ counts.get('published', 0) }}</a>
+        <a href="{{ url_for('admin.people_list', status=status, publish_status='draft') }}">草稿 {{ counts.get('draft', 0) }}</a>
+        <a href="{{ url_for('admin.people_list', status=status, publish_status='archived') }}">封存 {{ counts.get('archived', 0) }}</a>
+      </div>
+    </div>
+    {% endfor %}
+
+    <div class="stat-card">
+      <p class="stat-card__label">研究成果</p>
+      <p class="stat-card__value">{{ research_counts.get('published', 0) }}</p>
+      <div class="stat-card__breakdown">
+        <a href="{{ url_for('admin.research_list', publish_status='published') }}">已發布 {{ research_counts.get('published', 0) }}</a>
+        <a href="{{ url_for('admin.research_list', publish_status='draft') }}">草稿 {{ research_counts.get('draft', 0) }}</a>
+        <a href="{{ url_for('admin.research_list', publish_status='archived') }}">封存 {{ research_counts.get('archived', 0) }}</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ---------- Needs attention ---------- #}
+<section class="admin-panel" aria-labelledby="attention-heading">
+  <h2 class="admin-panel__title" id="attention-heading">
+    需要注意
+    {% if issues %}<span class="year-group__count">（{{ issues | length }} 項）</span>{% endif %}
+  </h2>
+
+  {% if legacy_pending %}
+  <p class="form-field__hint" style="margin-bottom: var(--space-4);">
+    另有 {{ legacy_pending }} 位由母站遷入的成員尚未補齊研究焦點。
+    依 2026-08-14 核准紀錄，這些成員可先行發布以確保姓名可被查得，
+    但仍需儘速補齊以符合 SAI §15.1 的發布門檻。
+  </p>
+  {% endif %}
+
+  {% if issues %}
+  <ul class="issue-list">
+    {% for issue in issues %}
+    <li>
+      <span class="severity severity--{{ issue.severity }}">
+        {% if issue.severity == 'blocking' %}阻擋發布{% elif issue.severity == 'warning' %}建議修正{% else %}參考{% endif %}
+      </span>
+      <a href="{% if issue.entity == 'person' %}{{ url_for('admin.person_edit', person_id=issue.id) }}{% else %}{{ url_for('admin.research_edit', output_id=issue.id) }}{% endif %}">
+        {{ issue.name }}
+      </a>
+      <span style="color: var(--color-ink-soft);">{{ issue.issue }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p style="color: var(--color-ink-soft);">目前沒有需要處理的內容品質問題。</p>
+  {% endif %}
+</section>
+
+{# ---------- Recent changes ---------- #}
+<section class="admin-panel" aria-labelledby="recent-heading">
+  <h2 class="admin-panel__title" id="recent-heading">最近修改</h2>
+
+  {% if recent %}
+  <ul class="issue-list">
+    {% for entry in recent %}
+    <li>
+      <span style="font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-ink-faint); min-width: 130px;">
+        {{ entry.created_at | local_datetime }}
+      </span>
+      <span>
+        {% if entry.entity_type == 'person' and entry.entity_id %}
+        <a href="{{ url_for('admin.person_edit', person_id=entry.entity_id) }}">{{ entry.summary }}</a>
+        {% elif entry.entity_type == 'research_output' and entry.entity_id %}
+        <a href="{{ url_for('admin.research_edit', output_id=entry.entity_id) }}">{{ entry.summary }}</a>
+        {% else %}
+        {{ entry.summary }}
+        {% endif %}
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p style="color: var(--color-ink-soft);">尚無內容異動紀錄。</p>
+  {% endif %}
+</section>
+
+{# ---------- System health（SAI §7.2：只有管理員可見） ---------- #}
+<section class="admin-panel" aria-labelledby="health-heading">
+  <h2 class="admin-panel__title" id="health-heading">系統狀態</h2>
+
+  <ul class="health-list">
+    {% for item in health %}
+    <li>
+      <span class="health-status {% if item.ok %}health-status--ok{% else %}health-status--fail{% endif %}">
+        {{ '正常' if item.ok else '異常' }}
+      </span>
+      <span class="health-name">{{ item.name }}</span>
+      <span class="health-detail">{{ item.detail }}</span>
+    </li>
+    {% endfor %}
+    <li>
+      <span class="health-status health-status--ok">資訊</span>
+      <span class="health-name">301 轉址紀錄</span>
+      <span class="health-detail">{{ redirect_count }} 筆（slug 變更時自動建立，SAI §4.2）</span>
+    </li>
+  </ul>
+</section>
+
+{% endblock %}

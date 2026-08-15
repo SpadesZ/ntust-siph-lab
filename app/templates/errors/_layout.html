@@ -1,0 +1,104 @@
+{#
+============================================================
+NTUST SiPh Lab - Error Page Layout
+
+上下游：
+  app/__init__.py 的 error handlers -> errors/*.html
+      -> {% extends "errors/_layout.html" %}
+
+檔案路徑：app/templates/errors/_layout.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §19、AC-19）：
+  所有錯誤頁的共用外殼。
+
+為什麼「不」繼承 public/base.html：
+  這是本檔最重要的設計決策。public/base.html 依賴
+  SEOService 傳入的 meta 物件，而 error handler 沒有 meta；
+  更關鍵的是，500 錯誤常常「就是資料庫或設定出了問題」，
+  若錯誤頁本身還要查 DB 組 SEO metadata，很可能一起失敗，
+  導致 Flask 退回預設錯誤頁並在 debug 模式暴露 stack trace
+  —— 那會直接違反 AC-19。
+
+  因此錯誤頁刻意保持最小相依：
+    - 只用 settings.lab_name_zh（context processor 已有
+      DB 失敗的 fallback，見 app/__init__.py）
+    - 只載入 tokens.css 與 main.css（純靜態檔）
+    - 不呼叫 media_url、不呼叫 SEOService、不查任何 repository
+
+SAI §19 要求對照：
+  404 -> 提供回首頁/研究/成員的導覽（見 404.html）
+  500 -> public 顯示友善錯誤；詳細 stack 只在 server log
+
+Block：
+  error_code   - 狀態碼（大字顯示）
+  error_title  - 標題
+  error_body   - 說明內容
+  error_actions- 行動按鈕（預設提供主要導覽）
+
+已知限制與禁止事項：
+  1. 禁止在錯誤頁顯示例外訊息、堆疊或設定值（AC-19）。
+  2. 禁止在此加入任何需要資料庫的查詢。
+  3. 錯誤頁一律 noindex —— 錯誤頁被索引會傷害站台品質評估。
+
+驗證方式：
+  pytest tests/test_errors.py
+============================================================
+#}
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block error_title %}發生錯誤{% endblock %} | {{ settings.lab_name_zh }}</title>
+
+  {# 錯誤頁不應被索引（見檔頭「已知限制 3」） #}
+  <meta name="robots" content="noindex, nofollow">
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">跳至主要內容</a>
+
+  <header class="site-header">
+    <div class="container site-header__inner">
+      <a class="site-brand" href="{{ url_for('public.home') }}">
+        <span class="site-brand__text">
+          <span class="site-brand__zh">{{ settings.lab_name_zh }}</span>
+        </span>
+      </a>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <div class="container section">
+      <p class="section-label" style="font-size: var(--text-md);">
+        Error {% block error_code %}{% endblock %}
+      </p>
+
+      <h1 class="trace-underline">{{ self.error_title() }}</h1>
+
+      <div class="prose" style="margin-top: var(--space-6);">
+        {% block error_body %}{% endblock %}
+      </div>
+
+      <nav class="next-steps" aria-label="導覽">
+        {% block error_actions %}
+        <a class="btn btn--primary" href="{{ url_for('public.home') }}">回到首頁</a>
+        <a class="btn btn--secondary" href="{{ url_for('public.research_index') }}">研究成果</a>
+        <a class="btn btn--secondary" href="{{ url_for('public.members') }}">研究成員</a>
+        {% endblock %}
+      </nav>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="site-footer__bottom">
+        <p>&copy; {{ current_year }} {{ settings.lab_name_zh }}</p>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

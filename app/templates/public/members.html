@@ -1,0 +1,144 @@
+{#
+============================================================
+NTUST SiPh Lab - Members Page (/members)
+
+上下游：
+  blueprints/public/routes.py::members() -> 本模板
+  資料：people_repo.get_faculty()、people_repo.list_current_members()
+
+檔案路徑：app/templates/public/members.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §5.2）：
+  「列表頁的工作是掃描與比較」。因此本頁不放完整履歷，
+  只呈現能幫訪客判斷研究方向的資訊，詳細內容留給人物頁。
+
+結構：
+  1. 頁首（h1 + 說明）
+  2. 教授區塊（若有 faculty）—— 與學生分開呈現，
+     因為兩者的資訊層級不同，混在同一個 grid 會弱化 PI 的識別。
+  3. 在學研究生 grid
+  4. 下一步導覽（SAI §5.2 頁尾：不得有死路）
+
+已知限制與禁止事項：
+  1. 只顯示 publish_status=published 的人物（AC-08）——
+     由 repository 保證，模板不再自行過濾。
+  2. 每頁唯一 h1（AC-18）。
+  3. 無資料時顯示誠實的空狀態，不放假成員。
+
+驗證方式：
+  pytest tests/test_people.py::test_members_page_lists_published_only
+============================================================
+#}
+{% extends "public/base.html" %}
+
+{% block breadcrumb_current %}研究成員{% endblock %}
+
+{% block content %}
+<div class="container">
+
+  <header class="section section--tight">
+    <span class="section-label">Members</span>
+    <h1 class="trace-underline">研究成員</h1>
+    <p class="prose" style="max-width: var(--measure-narrow); margin-top: var(--space-5);">
+      {{ settings.lab_name_zh }}目前的研究團隊。點選成員可查看其研究方向、
+      論文題目與相關研究成果。
+    </p>
+  </header>
+
+  {# ---------- 指導教授 ---------- #}
+  {% if faculty %}
+  <section class="section section--tight" aria-labelledby="faculty-heading">
+    <div class="section-header">
+      <div>
+        <span class="section-label">Principal Investigator</span>
+        <h2 class="section-title" id="faculty-heading">指導教授</h2>
+      </div>
+    </div>
+
+    <div class="split-panel">
+      <div>
+        {% if faculty.photo_path %}
+        <img src="{{ media_url(faculty.photo_path) }}"
+             alt="{{ faculty.photo_alt_zh or (faculty.name_zh ~ ' 照片') }}"
+             width="280" height="336"
+             style="width: 100%; max-width: 280px; border-radius: var(--radius-md); object-fit: cover;"
+             loading="lazy">
+        {% endif %}
+      </div>
+
+      <div class="prose">
+        <h3 style="margin-bottom: var(--space-1);">
+          <a href="{{ url_for('public.person_detail', slug=faculty.slug) }}">{{ faculty.name_zh }}</a>
+        </h3>
+        {% if faculty.name_en %}
+        <p class="person-hero__role">{{ faculty.name_en }}</p>
+        {% endif %}
+
+        <dl class="meta-list">
+          {% if faculty.title_zh %}
+          <dt>職稱</dt><dd>{{ faculty.title_zh }}</dd>
+          {% endif %}
+          {% if faculty.education_zh %}
+          <dt>學歷</dt><dd>{{ faculty.education_zh }}</dd>
+          {% endif %}
+          {% if faculty.research_focus_zh %}
+          <dt>研究專長</dt><dd>{{ faculty.research_focus_zh }}</dd>
+          {% endif %}
+          {% if faculty.email_public %}
+          <dt>Email</dt>
+          <dd><a href="mailto:{{ faculty.email_public }}">{{ faculty.email_public }}</a></dd>
+          {% endif %}
+          {% if faculty.external_url %}
+          <dt>官方頁面</dt>
+          <dd>
+            <a href="{{ faculty.external_url }}" rel="noopener">
+              {{ faculty.external_url_label or 'NTUST 官方頁面' }}
+            </a>
+          </dd>
+          {% endif %}
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <hr class="waveguide-rule">
+  {% endif %}
+
+  {# ---------- 在學研究生 ---------- #}
+  <section class="section section--tight" aria-labelledby="students-heading">
+    <div class="section-header">
+      <div>
+        <span class="section-label">Graduate Students</span>
+        <h2 class="section-title" id="students-heading">
+          在學研究生
+          {% if members %}
+          <span class="year-group__count">（{{ members | length }} 位）</span>
+          {% endif %}
+        </h2>
+      </div>
+    </div>
+
+    {% if members %}
+    <div class="card-grid card-grid--wide">
+      {% for person in members %}
+      {% include "public/_person_card.html" %}
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <p class="empty-state__title">目前沒有已發布的在學成員</p>
+      <p>成員資料由管理者於後台新增並發布後，會在此顯示。</p>
+    </div>
+    {% endif %}
+  </section>
+
+  {# ---------- 下一步（SAI §5.2：無下一步的死路為禁止項） ---------- #}
+  <nav class="next-steps" aria-label="延伸瀏覽">
+    <a class="btn btn--secondary" href="{{ url_for('public.research_index') }}">瀏覽研究成果</a>
+    <a class="btn btn--secondary" href="{{ url_for('public.alumni') }}">查看畢業生</a>
+    <a class="btn btn--primary" href="{{ url_for('public.join') }}">加入研究室</a>
+  </nav>
+
+</div>
+{% endblock %}

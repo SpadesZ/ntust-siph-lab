@@ -1,0 +1,107 @@
+{#
+============================================================
+NTUST SiPh Lab - Person Card Partial
+
+上下游：
+  public/home.html、public/members.html -> {% include %} 本檔
+  期望上下文變數：person（Person model 實例）
+
+檔案路徑：
+  app/templates/public/_person_card.html
+
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位：
+  SAI §5.2「列表卡」規格的唯一實作。抽成 partial 的理由：
+  首頁與 /members 都要顯示人物卡，若各自實作，兩處的
+  「必顯示 / 選配 / 禁止」規則會漂移。
+
+SAI §5.2 列表卡規格對照：
+  必顯示：照片、姓名、中英文名、年級/狀態、
+          1-2 行研究焦點、2-4 個技能 tag
+  選配：  GitHub / Scholar icon
+  禁止：  私人電話、未同意公開的個資、過長自傳
+
+實作重點：
+  1. 研究焦點以 CSS line-clamp 限制 2 行（見 main.css），
+     而非在此截斷字串 —— 保留完整文字供螢幕閱讀器讀取。
+  2. 技能 tag 最多顯示 4 個（規格上限），其餘以「+N」表示。
+  3. 無照片時顯示姓名首字，而非通用人形圖示
+     （前者傳達資訊，後者純裝飾）。
+  4. 整張卡片沒有 hover-only 的操作；姓名連結在任何裝置
+     與鍵盤操作下都可用（SAI §6.3 第 5 條）。
+
+已知限制與禁止事項：
+  1. 禁止在卡片顯示 email_public 以外的聯絡方式。
+  2. 禁止顯示 current_affiliation/current_position
+     （那是畢業生詳細頁的內容，且需 destination_public 為真）。
+
+驗證方式：
+  pytest tests/test_people.py::test_member_card_fields
+============================================================
+#}
+<article class="person-card">
+  {% if person.photo_path %}
+  <img class="person-card__photo"
+       src="{{ media_url(person.photo_path) }}"
+       alt="{{ person.photo_alt_zh or (person.name_zh ~ ' 照片') }}"
+       width="96" height="96" loading="lazy">
+  {% else %}
+  {# 佔位符不是資訊圖，以 aria-hidden 排除於無障礙樹之外 #}
+  <div class="person-card__photo person-card__photo--placeholder" aria-hidden="true">
+    {{ person.name_zh[0] if person.name_zh else '·' }}
+  </div>
+  {% endif %}
+
+  <div>
+    <h3 class="person-card__name">
+      <a href="{{ url_for('public.person_detail', slug=person.slug) }}">
+        {{ person.name_zh }}
+      </a>
+    </h3>
+
+    <p class="person-card__role">
+      {%- set role_parts = [] -%}
+      {%- if person.name_en %}{% set _ = role_parts.append(person.name_en) %}{% endif -%}
+      {%- if person.title_zh %}{% set _ = role_parts.append(person.title_zh) %}{% endif -%}
+      {%- if person.degree and not person.title_zh %}{% set _ = role_parts.append(person.degree) %}{% endif -%}
+      {%- if person.status == 'alumni' and person.graduation_year -%}
+        {% set _ = role_parts.append(person.graduation_year ~ ' 年畢業') %}
+      {%- endif -%}
+      {{ role_parts | join(' · ') }}
+    </p>
+
+    {% if person.research_focus_zh or person.research_focus_en %}
+    <p class="person-card__focus">
+      {{ person.research_focus_zh or person.research_focus_en }}
+    </p>
+    {% endif %}
+
+    {% if person.skills %}
+    {# SAI §5.2：2-4 個技能/主題 tag #}
+    <ul class="tag-list">
+      {% for skill in person.skills[:4] %}
+      <li><span class="tag">{{ skill }}</span></li>
+      {% endfor %}
+      {% if person.skills | length > 4 %}
+      <li><span class="tag">+{{ person.skills | length - 4 }}</span></li>
+      {% endif %}
+    </ul>
+    {% endif %}
+
+    {# 選配：學術連結。以文字而非純圖示，確保可讀性與可及性 #}
+    {% if person.scholar_url or person.github_url or person.orcid_url %}
+    <ul class="link-row" style="margin-top: var(--space-3);">
+      {% if person.scholar_url %}
+      <li><a class="link-chip btn--small" href="{{ person.scholar_url }}" rel="noopener">Scholar</a></li>
+      {% endif %}
+      {% if person.orcid_url %}
+      <li><a class="link-chip btn--small" href="{{ person.orcid_url }}" rel="noopener">ORCID</a></li>
+      {% endif %}
+      {% if person.github_url %}
+      <li><a class="link-chip btn--small" href="{{ person.github_url }}" rel="noopener">GitHub</a></li>
+      {% endif %}
+    </ul>
+    {% endif %}
+  </div>
+</article>

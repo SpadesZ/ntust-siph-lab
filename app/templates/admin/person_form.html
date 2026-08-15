@@ -1,0 +1,313 @@
+{#
+============================================================
+NTUST SiPh Lab - Admin Person Form (新增/編輯)
+
+上下游：
+  blueprints/admin/routes.py::person_new / person_edit -> 本模板
+  PersonForm -> POST -> PersonService
+  GraduateForm -> POST /admin/people/<id>/graduate
+  ConfirmForm -> 發布 / 取消發布 / 封存 / 移除照片
+
+檔案路徑：app/templates/admin/person_form.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §15.1、§15.3、§7.5）：
+  人物表單的欄位分區完全對應 SAI §15.1 的表格：
+    Identity / Academic / Research / Links / Photo / SEO / Publish
+
+  畢業生額外欄位（§15.3）以 Destination 區塊呈現，
+  並包含「不公開就業資訊」的明確選項（§15.3 Privacy 要求）。
+
+  轉為畢業生（§7.5）以獨立表單呈現，要求填 Graduation Year、
+  Degree、Thesis Title。
+
+表單結構決策：
+  使用 <fieldset> + <legend> 分區，而非 tab。
+  理由：tab 需要 JS，且「填到一半切換 tab」容易讓管理者
+  誤以為資料已存。單一長表單一次送出，狀態最單純
+  （SAI §14.2：Forms show required/optional state,
+  validation and saved status clearly）。
+
+  表單為 multipart/form-data —— 因為含照片上傳欄位。
+
+已知限制與禁止事項：
+  1. 發布必須通過 PublishValidator（由 route 保證）。
+  2. 照片上傳與其他欄位是兩個交易步驟（見 PersonService
+     的 attach_photo 說明）；若上傳失敗，文字欄位已儲存，
+     頁面會顯示錯誤訊息說明。
+  3. 禁止在此提供硬刪除（SAI §7.6）。
+
+驗證方式：
+  pytest tests/test_admin.py
+  人工：Tab 鍵完成整份表單（AC-16）
+============================================================
+#}
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import field, checkbox, status_badge, confirm_button, validation_panel %}
+
+{% block page_title %}{{ '編輯成員：' ~ person.name_zh if person else '新增成員' }}{% endblock %}
+
+{% block page_desc %}
+{% if person %}
+<p class="admin-header__desc">
+  公開網址：<code>/people/{{ person.slug }}</code>
+  ・目前狀態：{{ status_badge(person.publish_status) }}
+  {% if person.publish_status == 'published' %}
+  ・<a href="{{ url_for('public.person_detail', slug=person.slug) }}" target="_blank" rel="noopener">前台檢視 ↗</a>
+  {% endif %}
+</p>
+{% else %}
+<p class="admin-header__desc">
+  新成員預設儲存為草稿。填寫完成後，於編輯頁確認內容並發布。
+</p>
+{% endif %}
+{% endblock %}
+
+{% block header_actions %}
+<a class="btn btn--secondary btn--small" href="{{ url_for('admin.people_list') }}">← 返回列表</a>
+{% endblock %}
+
+{% block content %}
+
+{# ---------- 發布門檻檢查結果（SAI §15.1） ---------- #}
+{% if person %}
+{{ validation_panel(validation) }}
+{% endif %}
+
+<form class="admin-form" method="post" enctype="multipart/form-data"
+      action="{{ url_for('admin.person_edit', person_id=person.id) if person else url_for('admin.person_new') }}">
+  {{ form.csrf_token }}
+
+  {# ---------- Identity ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">基本身分</legend>
+    <p class="form-section__hint">
+      slug 是公開網址的一部分。發布後若變更，系統會自動建立 301 轉址，舊連結不會失效。
+    </p>
+    <div class="form-grid">
+      {{ field(form.name_zh, required=true) }}
+      {{ field(form.name_en) }}
+      {{ field(form.slug) }}
+      {{ field(form.status, css='select', required=true) }}
+    </div>
+  </fieldset>
+
+  {# ---------- Academic ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">學術身分</legend>
+    <div class="form-grid">
+      {{ field(form.title_zh) }}
+      {{ field(form.title_en) }}
+      {{ field(form.degree) }}
+      {{ field(form.entry_year) }}
+      {{ field(form.graduation_year) }}
+    </div>
+    <div class="form-grid" style="margin-top: var(--space-5);">
+      {{ field(form.education_zh, css='textarea', rows=2, full=true) }}
+      {{ field(form.education_en, css='textarea', rows=2, full=true) }}
+    </div>
+  </fieldset>
+
+  {# ---------- Research ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">研究內容</legend>
+    <p class="form-section__hint">
+      公開的人物至少需要一個語言版本的研究焦點（SAI §15.1）。
+      請填寫實際的研究方向，不要填寫概括性的形容。
+    </p>
+    <div class="form-grid">
+      {{ field(form.research_focus_zh, css='textarea', rows=3, full=true) }}
+      {{ field(form.research_focus_en, css='textarea', rows=3, full=true) }}
+      {{ field(form.thesis_title_zh, css='textarea', rows=2, full=true) }}
+      {{ field(form.thesis_title_en, css='textarea', rows=2, full=true) }}
+      {{ field(form.skills, full=true) }}
+      {{ field(form.bio_zh, css='textarea', rows=4, full=true) }}
+      {{ field(form.bio_en, css='textarea', rows=4, full=true) }}
+    </div>
+  </fieldset>
+
+  {# ---------- Destination（畢業生，隱私敏感 SAI §15.3） ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">畢業去向（僅畢業生）</legend>
+    <p class="form-section__hint">
+      就業公司與職稱屬於個人資訊。依 SAI §5.4 隱私規則，
+      只有在本人或研究室已確認可公開時才會顯示於前台，
+      請務必勾選下方的確認選項，否則即使填寫也不會顯示。
+    </p>
+    <div class="form-grid">
+      {{ field(form.current_affiliation) }}
+      {{ field(form.current_position) }}
+    </div>
+    <div style="margin-top: var(--space-4);">
+      {{ checkbox(form.destination_public, full=true) }}
+    </div>
+  </fieldset>
+
+  {# ---------- Links ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">公開連結</legend>
+    <p class="form-section__hint">
+      全部為選填。只填寫已同意公開的聯絡方式；網址需為有效的 http/https 連結。
+    </p>
+    <div class="form-grid">
+      {{ field(form.email_public) }}
+      {{ field(form.orcid_url) }}
+      {{ field(form.scholar_url) }}
+      {{ field(form.github_url) }}
+      {{ field(form.linkedin_url) }}
+      {{ field(form.external_url) }}
+      {{ field(form.external_url_label) }}
+    </div>
+  </fieldset>
+
+  {# ---------- Photo（SAI §16） ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">照片</legend>
+    <p class="form-section__hint">
+      允許 jpg / png / webp，上限 8 MB。上傳後系統會自動縮放並移除
+      EXIF 等中繼資料（包含拍攝位置）。已上傳照片時，替代文字為必填。
+    </p>
+
+    {% if person and person.photo_path %}
+    <div class="media-preview" style="margin-bottom: var(--space-5);">
+      <img src="{{ media_url(person.photo_path) }}"
+           alt="{{ person.photo_alt_zh or (person.name_zh ~ ' 目前照片') }}">
+      <div>
+        <p class="media-preview__meta">目前檔案：{{ person.photo_path }}</p>
+        <div style="margin-top: var(--space-3);">
+          {{ confirm_button(
+              url_for('admin.person_photo_delete', person_id=person.id),
+              '移除照片', confirm_form, 'btn btn--danger btn--small') }}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="form-grid">
+      {{ field(form.photo, css='input', full=true) }}
+      {{ field(form.photo_alt_zh) }}
+      {{ field(form.photo_alt_en) }}
+    </div>
+  </fieldset>
+
+  {# ---------- SEO 與排序 ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">SEO 與顯示順序</legend>
+    <p class="form-section__hint">
+      SEO 欄位留空時，系統會依姓名與研究焦點自動生成（SAI §12.3），
+      通常不需要手動填寫。排序值越小越前面。
+    </p>
+    <div class="form-grid">
+      {{ field(form.seo_title_zh, full=true) }}
+      {{ field(form.seo_description_zh, css='textarea', rows=2, full=true) }}
+      {{ field(form.sort_order) }}
+    </div>
+    <div style="margin-top: var(--space-4);">
+      {{ checkbox(form.is_featured) }}
+    </div>
+  </fieldset>
+
+  {# ---------- 動作列 ---------- #}
+  <div class="action-bar action-bar--sticky">
+    <button class="btn btn--primary" type="submit">{{ '儲存變更' if person else '建立成員' }}</button>
+    <a class="btn btn--secondary" href="{{ url_for('admin.people_list') }}">取消</a>
+    <span class="action-bar__spacer"></span>
+    {% if person %}
+    <span style="font-size: var(--text-xs); color: var(--color-ink-faint);">
+      最後更新：{{ person.updated_at | local_datetime }}
+    </span>
+    {% endif %}
+  </div>
+</form>
+
+{# ---------- 狀態操作（獨立於主表單，避免誤觸） ---------- #}
+{% if person %}
+<section class="admin-panel" aria-labelledby="publish-actions-heading">
+  <h2 class="admin-panel__title" id="publish-actions-heading">發布狀態</h2>
+  <p class="form-section__hint" style="margin-bottom: var(--space-4);">
+    目前狀態：{{ status_badge(person.publish_status) }}
+    {% if person.publish_status != 'published' %}
+    　發布前系統會再次執行完整的發布門檻檢查。
+    {% endif %}
+  </p>
+
+  <div style="display: flex; gap: var(--space-3); flex-wrap: wrap;">
+    {% if person.publish_status != 'published' %}
+    {{ confirm_button(
+        url_for('admin.person_publish', person_id=person.id),
+        '發布到前台', confirm_form, 'btn btn--primary btn--small') }}
+    {% else %}
+    {{ confirm_button(
+        url_for('admin.person_unpublish', person_id=person.id),
+        '取消發布（退回草稿）', confirm_form, 'btn btn--secondary btn--small') }}
+    {% endif %}
+
+    {% if person.publish_status != 'archived' %}
+    {{ confirm_button(
+        url_for('admin.person_archive', person_id=person.id),
+        '封存', confirm_form, 'btn btn--danger btn--small') }}
+    {% endif %}
+  </div>
+  <p class="form-field__hint" style="margin-top: var(--space-4);">
+    系統不提供永久刪除。封存後資料完整保留，可隨時重新發布（SAI §7.6）。
+  </p>
+</section>
+
+{# ---------- 轉為畢業生（SAI §7.5、AC-06） ---------- #}
+{% if person.status == 'current' %}
+<section class="admin-panel" aria-labelledby="graduate-heading">
+  <h2 class="admin-panel__title" id="graduate-heading">轉為畢業生</h2>
+  <p class="form-section__hint" style="margin-bottom: var(--space-5);">
+    此操作只會變更人物狀態並補上畢業資訊。
+    <strong>個人網址（/people/{{ person.slug }}）與所有研究成果關聯都不會改變</strong>，
+    因此既有的外部連結與引用仍然有效（SAI §7.5、ADR-008）。
+    完成後此成員會從「研究成員」頁移除，並出現在「畢業生」頁的對應年度。
+  </p>
+
+  <form method="post" action="{{ url_for('admin.person_graduate', person_id=person.id) }}">
+    {{ graduate_form.csrf_token }}
+    <div class="form-grid">
+      {{ field(graduate_form.graduation_year, required=true) }}
+      {{ field(graduate_form.degree) }}
+      {{ field(graduate_form.thesis_title_zh, css='textarea', rows=2, full=true) }}
+    </div>
+    <div style="margin-top: var(--space-5);">
+      <button class="btn btn--primary btn--small" type="submit">確認轉為畢業生</button>
+    </div>
+  </form>
+</section>
+{% endif %}
+
+{# ---------- 關聯研究成果（雙向導航 AC-07） ---------- #}
+<section class="admin-panel" aria-labelledby="linked-outputs-heading">
+  <h2 class="admin-panel__title" id="linked-outputs-heading">關聯的研究成果</h2>
+  {% if person.output_links %}
+  <ul class="issue-list">
+    {% for link in person.output_links %}
+    {% if link.research_output %}
+    <li>
+      {{ status_badge(link.research_output.publish_status) }}
+      <a href="{{ url_for('admin.research_edit', output_id=link.research_output.id) }}">
+        {{ link.research_output.display_title }}
+      </a>
+      <span style="color: var(--color-ink-faint); font-size: var(--text-xs);">
+        {{ link.research_output.year }}・{{ link.role_label_zh }}
+      </span>
+    </li>
+    {% endif %}
+    {% endfor %}
+  </ul>
+  <p class="form-field__hint" style="margin-top: var(--space-4);">
+    成果與成員的關聯在「研究成果」編輯頁設定。
+  </p>
+  {% else %}
+  <p style="color: var(--color-ink-soft);">
+    尚未關聯任何研究成果。可於
+    <a href="{{ url_for('admin.research_list') }}">研究成果</a>
+    編輯頁將此成員加入關聯清單。
+  </p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% endblock %}

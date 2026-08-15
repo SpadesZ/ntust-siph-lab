@@ -1,0 +1,107 @@
+# ============================================================
+# NTUST SiPh Lab - Local Development / QA Compose
+#
+# 上下游：
+#   docker compose up
+#       -> Dockerfile（同一份 image 也用於 Cloud Run）
+#       -> .env.local（本機設定）
+#       -> bind mount：instance / uploads / backups
+#       -> http://127.0.0.1:8000
+#
+# 檔案路徑：
+#   docker-compose.yml
+#
+# 建立日期：2026-08-14
+# 最後重大修改：2026-08-14
+# 版本：v1.0
+#
+# 模組定位與責任邊界：
+#   SAI §10.1 指定的本機開發與 QA 環境。ADR-002（Local-first
+#   SQLite）要求開發、設計 review、內容輸入與功能驗收全部先在
+#   本機完成，且不依賴任何 GCP 資源。
+#
+#   責任邊界（不得做的事）：
+#     - 不得在此定義 production 服務（那是 Cloud Run，
+#       設定見 deploy/service.yaml 與 deploy/cloudrun.md）。
+#     - 不得在此放入任何正式機密。
+#
+# 服務：
+#   web - Flask 應用（Gunicorn）
+#
+# 環境變數：
+#   由 .env.local 提供（見 .env.example）。
+#
+# 資料持久化（AC-13 的關鍵）：
+#   三個 bind mount 讓資料存在於「主機」而非 container：
+#     ./instance -> /app/instance   （SQLite 資料庫）
+#     ./uploads  -> /app/uploads    （媒體檔案）
+#     ./backups  -> /app/backups    （備份輸出）
+#   因此 docker compose down && docker compose build && up 之後，
+#   資料與圖片都不會消失（AC-13）。
+#
+#   注意：這是「本機」的持久化方案。Cloud Run 不可用此方式 ——
+#   其 container filesystem 不具持久性 [S17]，正式環境必須
+#   使用 Cloud SQL 與 Cloud Storage（ADR-005/006）。
+#
+# Error Handling / Fallback：
+#   healthcheck 由 Dockerfile 定義；容器 unhealthy 時
+#   restart policy 會嘗試重啟。
+#
+# 特殊機制（127.0.0.1 綁定）：
+#   埠對映刻意寫成 "127.0.0.1:8000:8000" 而非 "8000:8000"。
+#   後者會綁定到 0.0.0.0，讓同一區網的其他裝置都能存取
+#   開發中的網站（包含尚未完成的內容與 /admin）。
+#   限定 loopback 可避免這種非預期的暴露。
+#
+# 已知限制與禁止事項：
+#   1. 本檔僅供開發與內容驗收，禁止用於正式對外服務。
+#   2. 禁止把 .env.local commit 進 Git（.gitignore 已排除）。
+#   3. 首次啟動後必須手動執行 migration 與建立管理員：
+#        docker compose exec web flask db upgrade
+#        docker compose exec web flask admin create --generate
+#      刻意不自動執行 —— 自動 migration 在多實例環境會產生
+#      競態，且 seed 應該是明確的人為決定。
+#
+# 維護契約：
+#   新增需要持久化的目錄時，必須同時：
+#     (a) 在此加入 bind mount
+#     (b) 在 Dockerfile 建立目錄並設定擁有者
+#     (c) 更新 scripts/backup_sqlite.py 的備份範圍
+#   缺 (c) 會造成「有備份但還原後缺資料」。
+#
+# 驗證方式：
+#   docker compose up --build
+#   docker compose exec web flask db upgrade
+#   curl -i http://127.0.0.1:8000/healthz
+# ============================================================
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ntust-siph-lab:local
+    container_name: siph-lab-web
+
+    # env_file 缺少時 compose 會失敗，因此請先複製：
+    #   cp .env.example .env.local
+    env_file:
+      - .env.local
+
+    # 覆寫 image 中的 production 預設值。
+    environment:
+      APP_ENV: local
+
+    command: gunicorn -c gunicorn.conf.py wsgi:app
+
+    # 只綁定 loopback（見檔頭「特殊機制」）。
+    ports:
+      - "127.0.0.1:8000:8000"
+
+    # AC-13：資料持久化於主機端。
+    volumes:
+      - ./instance:/app/instance
+      - ./uploads:/app/uploads
+      - ./backups:/app/backups
+
+    restart: unless-stopped

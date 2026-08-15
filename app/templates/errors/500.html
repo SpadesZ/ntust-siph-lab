@@ -1,0 +1,21 @@
+{#
+============================================================
+NTUST SiPh Lab - 500 Internal Server Error
+檔案路徑：app/templates/errors/500.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §19、AC-19）：
+  「500 public 顯示友善錯誤；詳細 stack 只在 server log」。
+
+硬性規定：
+  本模板「絕對不得」輸出例外訊息、堆疊、SQL 或設定值。
+  AC-19 會檢查回應內容不含 Traceback。
+============================================================
+#}
+{% extends "errors/_layout.html" %}
+{% block error_code %}500{% endblock %}
+{% block error_title %}伺服器發生問題{% endblock %}
+{% block error_body %}
+<p>很抱歉，處理您的請求時發生非預期的錯誤。此問題已記錄，管理者會進行檢查。</p>
+<p>請稍後重新整理，或從下方導覽回到其他頁面。</p>
+{% endblock %}

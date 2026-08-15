@@ -1,0 +1,33 @@
+# ============================================================
+# NTUST SiPh Lab - Development & Test Dependencies
+#
+# 檔案路徑：requirements-dev.txt
+# 建立日期：2026-08-14 / 版本：v1.0
+#
+# 用途：
+#   本機開發與 CI 所需，但正式 image 不安裝的套件。
+#   Dockerfile 只安裝 requirements.txt，因此測試工具
+#   不會進入 production image（縮小攻擊面與體積）。
+#
+# 安裝：
+#   pip install -r requirements.txt -r requirements-dev.txt
+#
+# 維護契約：
+#   任何只在測試中使用的套件都必須放這裡，不得混入
+#   requirements.txt —— 否則 production image 會夾帶
+#   不必要的相依。
+#
+# 驗證方式：
+#   pytest
+# ============================================================
+
+pytest~=8.3.4
+pytest-cov~=6.0.0
+
+# HTML 結構解析：a11y 與 SEO 測試需要可靠地查詢 DOM，
+# 用正則表示式驗證巢狀結構既脆弱又難以維護。
+beautifulsoup4~=4.12.3
+
+# PostgreSQL 可攜性測試（tests/test_db_portability.py）。
+# 沒有可用的 PostgreSQL 時該組測試會自動 skip。
+psycopg[binary]~=3.2.3

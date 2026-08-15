@@ -1,0 +1,25 @@
+{#
+============================================================
+NTUST SiPh Lab - 429 Too Many Requests
+檔案路徑：app/templates/errors/429.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §11.2、AC-02）：
+  「Brute force -> rate limit + 強密碼 + audit；
+    連續失敗觸發 429/暫停」。
+
+刻意不顯示剩餘等待時間：
+  精確的重試時間對攻擊者有價值（可精準排程），
+  對正常使用者則只需要知道「稍後再試」。
+============================================================
+#}
+{% extends "errors/_layout.html" %}
+{% block error_code %}429{% endblock %}
+{% block error_title %}嘗試次數過多{% endblock %}
+{% block error_body %}
+<p>短時間內的登入嘗試次數過多，已暫時停止接受請求。</p>
+<p>這是保護管理帳號的安全機制。請稍後再試；若您是研究室管理者且已忘記密碼，請於伺服器端執行密碼重設指令。</p>
+{% endblock %}
+{% block error_actions %}
+<a class="btn btn--primary" href="{{ url_for('public.home') }}">回到首頁</a>
+{% endblock %}

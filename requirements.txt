@@ -1,0 +1,60 @@
+# ============================================================
+# NTUST SiPh Lab - Production Dependencies
+#
+# 檔案路徑：requirements.txt
+# 建立日期：2026-08-14 / 版本：v1.0
+#
+# 版本鎖定政策（SAI 附錄 E：pinned dependencies）：
+#   使用 ~= 允許修補版更新（安全修補），但鎖定次版本，
+#   避免次版本的破壞性變更讓 Cloud Run 部署在無人察覺下失敗。
+#
+# 分組說明：
+#   [Web]      Flask 與其官方擴充
+#   [DB]       SQLAlchemy / Alembic / PostgreSQL driver
+#   [Media]    影像處理
+#   [Cloud]    GCP 相關（僅 production 需要，但一併安裝以確保
+#              同一個 image 可跑 local 與 cloud —— SAI §25：
+#              「同一套程式碼，環境差異只在設定」）
+#   [Runtime]  WSGI server 與時區資料
+#
+# 維護契約：
+#   升級任何套件後必須跑完整 pytest 與 flask db upgrade，
+#   並確認 SQLite 與 PostgreSQL 兩種 DB 都通過
+#   （tests/test_db_portability.py）。
+#
+# 驗證方式：
+#   pip install -r requirements.txt && pytest
+# ============================================================
+
+# --- Web ---
+Flask~=3.1.0
+Flask-SQLAlchemy~=3.1.1
+Flask-Migrate~=4.1.0
+Flask-Login~=0.6.3
+Flask-WTF~=1.2.2
+WTForms~=3.2.1
+Flask-Limiter~=3.12.0
+
+# --- DB ---
+SQLAlchemy~=2.0.36
+alembic~=1.14.0
+# psycopg 3：SQLAlchemy 2.x 的 postgresql+psycopg 方言使用此驅動。
+# binary extra 提供預編譯輪檔，避免在容器內編譯 libpq。
+psycopg[binary]~=3.2.3
+
+# --- Media ---
+# Pillow：上傳圖片的驗證與重新編碼（SAI §11.2、§16）。
+Pillow~=11.1.0
+
+# --- Cloud（production：ADR-006）---
+google-cloud-storage~=2.19.0
+
+# --- Runtime ---
+gunicorn~=23.0.0
+# tzdata：Windows 與精簡 Linux 映像缺少 IANA 時區資料庫，
+# zoneinfo("Asia/Taipei") 會失敗（見 app/utils/dates.py 的 fallback）。
+tzdata~=2024.2
+# pypinyin：中文姓名轉可讀 slug（SAI §4.2：避免姓名直接 URL encoding）。
+pypinyin~=0.53.0
+# python-dotenv：讓 flask CLI 自動載入 .env.local。
+python-dotenv~=1.0.1

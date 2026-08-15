@@ -1,0 +1,239 @@
+{#
+============================================================
+NTUST SiPh Lab - Person Detail Page (/people/<slug>)
+
+上下游：
+  blueprints/public/routes.py::person_detail() -> 本模板
+  資料：person（Person）、related_outputs（已發布成果）
+  JSON-LD：SchemaService.person() -> base.html
+
+檔案路徑：app/templates/public/person_detail.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §5.2、§5.4）：
+  「詳細頁的工作是建立研究身份」。同一個模板同時服務
+  faculty / current / alumni 三種狀態（ADR-008：單一 Person 實體），
+  依 status 顯示不同區塊。
+
+SAI §5.2 詳細頁規格對照：
+  首屏必顯示：姓名、身份、研究焦點一句話、照片、公開聯絡/學術連結
+  首屏禁止：  把所有 metadata 堆在首屏
+  詳細內容：  Thesis / Current Topic、Research Interests、
+              Methods & Tools、Related Outputs
+  頁尾：      Related Research、Back to Members、Last updated
+
+SAI §5.4 畢業生隱私規則：
+  就業公司/職稱只有在 destination_public=True 時才顯示。
+  模板使用 person.public_destination（model property 已內建此檢查），
+  而不是自行判斷 —— 確保任何新頁面都不會漏掉隱私檢查。
+
+AC-05 對照：
+  本頁具備 canonical、title、description（base.html）與
+  Person JSON-LD（SchemaService）。
+
+已知限制與禁止事項：
+  1. 禁止顯示任何未經 destination_public 確認的就業資訊。
+  2. 禁止輸出頁面看不到的 structured data 欄位（AC-17）——
+     本模板顯示的欄位與 SchemaService.person() 輸出一一對應。
+  3. 每頁唯一 h1（AC-18）：人物姓名。
+
+驗證方式：
+  pytest tests/test_people.py tests/test_schema.py
+============================================================
+#}
+{% extends "public/base.html" %}
+
+{% block breadcrumb_current %}{{ person.name_zh }}{% endblock %}
+
+{% block content %}
+<article class="container">
+
+  {# ---------- 首屏（SAI §5.2） ---------- #}
+  <header class="person-hero">
+    {% if person.photo_path %}
+    <img class="person-hero__photo"
+         src="{{ media_url(person.photo_path) }}"
+         alt="{{ person.photo_alt_zh or (person.name_zh ~ ' 照片') }}"
+         width="200" height="240">
+    {% endif %}
+
+    <div>
+      <h1 class="person-hero__title">
+        {{ person.name_zh }}
+        {% if person.name_en %}
+        <span class="person-hero__name-en">{{ person.name_en }}</span>
+        {% endif %}
+      </h1>
+
+      <p class="person-hero__role">
+        {%- set role_parts = [] -%}
+        {%- if person.title_zh %}{% set _ = role_parts.append(person.title_zh) %}{% endif -%}
+        {%- if person.degree %}{% set _ = role_parts.append(person.degree) %}{% endif -%}
+        {%- if person.status == 'alumni' and person.graduation_year -%}
+          {% set _ = role_parts.append(person.graduation_year ~ ' 年畢業') %}
+        {%- elif person.status == 'current' and person.entry_year -%}
+          {% set _ = role_parts.append(person.entry_year ~ ' 年入學') %}
+        {%- endif -%}
+        {{ role_parts | join(' · ') }}
+      </p>
+
+      {# 研究焦點一句話 —— 首屏的核心資訊 #}
+      {% if person.research_focus_zh or person.research_focus_en %}
+      <p class="person-hero__focus">
+        {{ person.research_focus_zh or person.research_focus_en }}
+      </p>
+      {% endif %}
+
+      {# 公開聯絡與學術連結 #}
+      {% if person.email_public or person.orcid_url or person.scholar_url
+            or person.github_url or person.linkedin_url or person.external_url %}
+      <ul class="link-row">
+        {% if person.email_public %}
+        <li><a class="link-chip" href="mailto:{{ person.email_public }}">{{ person.email_public }}</a></li>
+        {% endif %}
+        {% if person.orcid_url %}
+        <li><a class="link-chip" href="{{ person.orcid_url }}" rel="noopener">ORCID</a></li>
+        {% endif %}
+        {% if person.scholar_url %}
+        <li><a class="link-chip" href="{{ person.scholar_url }}" rel="noopener">Google Scholar</a></li>
+        {% endif %}
+        {% if person.github_url %}
+        <li><a class="link-chip" href="{{ person.github_url }}" rel="noopener">GitHub</a></li>
+        {% endif %}
+        {% if person.linkedin_url %}
+        <li><a class="link-chip" href="{{ person.linkedin_url }}" rel="noopener">LinkedIn</a></li>
+        {% endif %}
+        {% if person.external_url %}
+        <li>
+          <a class="link-chip" href="{{ person.external_url }}" rel="noopener">
+            {{ person.external_url_label or '官方頁面' }}
+          </a>
+        </li>
+        {% endif %}
+      </ul>
+      {% endif %}
+    </div>
+  </header>
+
+  <hr class="waveguide-rule">
+
+  {# ---------- 詳細內容 ---------- #}
+  <div class="split-panel">
+    <div>
+      {# 左欄：結構化 metadata #}
+      <dl class="meta-list">
+        {% if person.education_zh %}
+        <dt>學歷</dt><dd>{{ person.education_zh }}</dd>
+        {% endif %}
+
+        {% if person.thesis_title_zh or person.thesis_title_en %}
+        <dt>{{ '論文題目' if person.status == 'alumni' else '研究題目' }}</dt>
+        <dd>
+          {{ person.thesis_title_zh or person.thesis_title_en }}
+          {% if person.thesis_title_zh and person.thesis_title_en %}
+          <br><em>{{ person.thesis_title_en }}</em>
+          {% endif %}
+        </dd>
+        {% endif %}
+
+        {% if person.entry_year %}
+        <dt>入學年度</dt><dd>{{ person.entry_year }}</dd>
+        {% endif %}
+
+        {% if person.graduation_year %}
+        <dt>畢業年度</dt><dd>{{ person.graduation_year }}</dd>
+        {% endif %}
+
+        {#
+          畢業去向：只有 destination_public=True 時
+          public_destination 才會回傳值（SAI §5.4 隱私規則）。
+        #}
+        {% if person.public_destination %}
+        <dt>目前任職</dt><dd>{{ person.public_destination }}</dd>
+        {% endif %}
+      </dl>
+
+      {% if person.skills %}
+      <div style="margin-top: var(--space-8);">
+        <h2 class="section-label">Methods &amp; Tools</h2>
+        <ul class="tag-list">
+          {% for skill in person.skills %}
+          <li><span class="tag">{{ skill }}</span></li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+
+    <div>
+      {# 右欄：敘述內容 #}
+      {% if person.research_focus_zh %}
+      <section class="output-section">
+        <h2 class="output-section__title">研究方向</h2>
+        <div class="prose prose--preserve">{{ person.research_focus_zh }}</div>
+        {% if person.research_focus_en %}
+        <div class="prose prose--preserve" style="color: var(--color-ink-soft); margin-top: var(--space-3);">
+          {{ person.research_focus_en }}
+        </div>
+        {% endif %}
+      </section>
+      {% endif %}
+
+      {% if person.bio_zh %}
+      <section class="output-section">
+        <h2 class="output-section__title">簡介</h2>
+        <div class="prose prose--preserve">{{ person.bio_zh }}</div>
+      </section>
+      {% endif %}
+
+      {# ---------- Related Outputs（SAI §5.2、AC-07 雙向導航） ---------- #}
+      <section class="output-section" aria-labelledby="related-outputs-heading">
+        <h2 class="output-section__title" id="related-outputs-heading">相關研究成果</h2>
+
+        {% if related_outputs %}
+        <ul class="stack-list">
+          {% for output in related_outputs %}
+          <li>
+            <article class="card">
+              <div class="card__meta">
+                <span class="type-badge">{{ output.type_label_zh }}</span>
+                <span class="year-badge">{{ output.year }}</span>
+              </div>
+              <h3 class="card__title">
+                <a href="{{ url_for('public.research_detail', slug=output.slug) }}">
+                  {{ output.display_title }}
+                </a>
+              </h3>
+              {% if output.venue %}
+              <p class="card__body"><small>{{ output.venue }}</small></p>
+              {% endif %}
+            </article>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-state">
+          <p>目前沒有與此成員關聯的已發布研究成果。</p>
+        </div>
+        {% endif %}
+      </section>
+    </div>
+  </div>
+
+  {# ---------- 頁尾（SAI §5.2：Last updated + 不得有死路） ---------- #}
+  <p class="last-updated">
+    最後更新：<time datetime="{{ person.updated_at | iso_datetime }}">{{ person.updated_at | local_date }}</time>
+  </p>
+
+  <nav class="next-steps" aria-label="延伸瀏覽">
+    {% if person.status == 'alumni' %}
+    <a class="btn btn--secondary" href="{{ url_for('public.alumni') }}">← 返回畢業生列表</a>
+    {% else %}
+    <a class="btn btn--secondary" href="{{ url_for('public.members') }}">← 返回研究成員</a>
+    {% endif %}
+    <a class="btn btn--secondary" href="{{ url_for('public.research_index') }}">瀏覽研究成果</a>
+    <a class="btn btn--primary" href="{{ url_for('public.join') }}">加入研究室</a>
+  </nav>
+
+</article>
+{% endblock %}

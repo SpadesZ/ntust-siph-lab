@@ -1,0 +1,19 @@
+{#
+============================================================
+NTUST SiPh Lab - 413 Payload Too Large
+檔案路徑：app/templates/errors/413.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §16）：
+  「Max size 建議原始上傳 8 MB 上限；超出拒絕並提示」。
+  Flask 在 request 層即以 MAX_CONTENT_LENGTH 攔截，
+  因此不會進到 MediaService。此頁負責給出可理解的提示。
+============================================================
+#}
+{% extends "errors/_layout.html" %}
+{% block error_code %}413{% endblock %}
+{% block error_title %}上傳檔案過大{% endblock %}
+{% block error_body %}
+<p>上傳的檔案超過 {{ limit_mb }} MB 的大小上限。</p>
+<p>請將圖片壓縮後再上傳。建議人物照片的寬度不超過 1200 像素，研究圖片不超過 2000 像素。</p>
+{% endblock %}

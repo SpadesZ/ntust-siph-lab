@@ -1,0 +1,842 @@
+/* ============================================================
+ * NTUST SiPh Lab - Admin CMS Styles
+ *
+ * 上下游：
+ *   tokens.css -> main.css -> admin.css（本檔）
+ *   templates/admin/base.html 依序載入三者
+ *
+ * 檔案路徑：
+ *   app/static/css/admin.css
+ *
+ * 建立日期：2026-08-14
+ * 最後重大修改：2026-08-14
+ * 版本：v1.0
+ *
+ * 模組定位與責任邊界：
+ *   後台專用樣式。SAI §3 定義管理員的成功標準是
+ *   「登入 /admin 後在 3-5 分鐘內完成一般新增/編輯」，
+ *   §14.2 UX contract 要求「表單顯示必填/選填狀態、驗證
+ *   與已儲存狀態」。本檔以此為設計目標，而非視覺表現。
+ *
+ *   責任邊界（不得做的事）：
+ *     - 不得寫死色碼；一律使用 tokens.css 的 var()。
+ *     - 不得包含公開站樣式（那在 main.css）。
+ *     - 不得依賴 JavaScript 才能運作的樣式狀態。
+ *
+ * 設計取向（與公開站的差異與理由）：
+ *   公開站是 editorial（大留白、細線、克制）；
+ *   後台是 utility（高密度、明確邊界、狀態清楚）。
+ *   兩者共用 token 但不共用版面節奏 ——
+ *   後台若照抄公開站的大留白，一頁只放得下三個欄位，
+ *   直接違反「3-5 分鐘完成編輯」的目標。
+ *
+ * 主要區塊：
+ *   1. 後台版面（sidebar + main）
+ *   2. Flash 訊息
+ *   3. 統計卡與 Needs attention
+ *   4. 資料表格
+ *   5. 表單（fieldset、欄位、錯誤、必填標示）
+ *   6. 狀態徽章
+ *   7. 動作列與危險操作
+ *   8. Responsive
+ *
+ * 依賴：tokens.css、main.css（按鈕與輸入元件沿用）
+ *
+ * 已知限制與禁止事項：
+ *   1. 後台不做深色模式（v1 範圍外）。
+ *   2. 禁止以顏色作為狀態的唯一訊息 —— 所有狀態徽章
+ *      都同時有文字（SAI §17）。
+ *   3. 禁止讓危險操作（封存）與一般操作外觀相同。
+ *
+ * 維護契約：
+ *   新增表單元件時必須確認：label 與 input 正確關聯、
+ *   錯誤訊息指向欄位、Tab 順序合理（SAI §17 Forms、AC-16）。
+ *
+ * 驗證方式：
+ *   pytest tests/test_admin.py
+ *   人工：Tab 鍵完成登入與人物新增（AC-16）
+ * ============================================================ */
+
+/* ============================================================
+ * 1. 後台版面
+ * ============================================================ */
+
+.admin-body {
+  background: var(--color-surface-muted);
+}
+
+.admin-shell {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  min-height: 100vh;
+  align-items: start;
+}
+
+.admin-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--color-navy);
+  color: #c3d4e2;
+  padding: var(--space-6) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.admin-sidebar__brand {
+  color: var(--color-surface);
+  text-decoration: none;
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  display: block;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-navy-soft);
+}
+
+.admin-sidebar__brand small {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
+  color: #8fa8bd;
+  letter-spacing: var(--tracking-wide);
+  margin-top: var(--space-1);
+}
+
+.admin-nav__group {
+  margin-bottom: var(--space-5);
+}
+
+.admin-nav__heading {
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: #7f9ab2;
+  margin-bottom: var(--space-2);
+  padding-inline: var(--space-3);
+}
+
+.admin-nav__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.admin-nav__list li {
+  margin-bottom: var(--space-1);
+}
+
+.admin-nav__link {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  color: #d7e4ef;
+  text-decoration: none;
+  font-size: var(--text-sm);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid transparent;
+}
+
+.admin-nav__link:hover {
+  background: var(--color-navy-soft);
+  color: var(--color-surface);
+}
+
+/* 目前頁面：同時以左側邊框與文字色標示（不只靠顏色）*/
+.admin-nav__link[aria-current="page"] {
+  background: var(--color-navy-soft);
+  border-left-color: var(--color-photon-bright);
+  color: var(--color-photon-bright);
+  font-weight: var(--weight-semibold);
+}
+
+.admin-sidebar__footer {
+  margin-top: auto;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-navy-soft);
+  font-size: var(--text-xs);
+  color: #8fa8bd;
+}
+
+/* 深藍側欄上的按鈕必須改用亮色文字。
+   main.css 的 .btn--secondary 預設是深色文字（供白底使用），
+   直接放在側欄會變成深藍底配深色字而完全看不見 ——
+   此問題曾實際發生於登出按鈕。
+   main.css 已為 .section--navy 與 .hero 提供對應覆寫，
+   後台側欄是第三個深底情境，因此在此補上。 */
+.admin-sidebar .btn--secondary {
+  color: var(--color-surface);
+  border-color: rgba(255, 255, 255, 0.35);
+  background: transparent;
+}
+
+.admin-sidebar .btn--secondary:hover {
+  border-color: var(--color-photon-bright);
+  color: var(--color-photon-bright);
+  background: var(--color-navy-soft);
+}
+
+.admin-main {
+  padding: var(--space-8) var(--space-8) var(--space-16);
+  min-width: 0; /* 讓內部表格可以正確收縮 */
+}
+
+.admin-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
+}
+
+.admin-header h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+}
+
+.admin-header__desc {
+  margin: var(--space-2) 0 0;
+  color: var(--color-ink-soft);
+  font-size: var(--text-sm);
+  max-width: var(--measure-text);
+}
+
+.admin-panel {
+  background: var(--color-surface);
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
+}
+
+.admin-panel__title {
+  font-size: var(--text-md);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: var(--border-hairline);
+}
+
+/* ============================================================
+ * 2. Flash 訊息
+ *
+ * 每種類型都有文字前綴（成功 / 錯誤 / 提醒），
+ * 不以顏色作為唯一訊息（SAI §17）。
+ * ============================================================ */
+
+.flash-list {
+  list-style: none;
+  margin: 0 0 var(--space-6);
+  padding: 0;
+}
+
+.flash {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-sm);
+  border-left: 4px solid;
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+  /* 訊息可能含多行（例如發布驗證的問題清單）*/
+  white-space: pre-line;
+}
+
+.flash--success {
+  background: var(--color-success-bg);
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.flash--error {
+  background: var(--color-error-bg);
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.flash--warning {
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning);
+  color: var(--color-warning);
+}
+
+.flash--info {
+  background: var(--color-info-bg);
+  border-color: var(--color-info);
+  color: var(--color-info);
+}
+
+.flash__label {
+  font-weight: var(--weight-semibold);
+  flex-shrink: 0;
+}
+
+/* ============================================================
+ * 3. 統計卡與 Needs attention
+ * ============================================================ */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.stat-card {
+  background: var(--color-surface);
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+}
+
+.stat-card__label {
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+  margin-bottom: var(--space-2);
+}
+
+.stat-card__value {
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  color: var(--color-ink);
+  line-height: 1;
+  margin-bottom: var(--space-2);
+}
+
+.stat-card__breakdown {
+  font-size: var(--text-xs);
+  color: var(--color-ink-soft);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.issue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.issue-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: var(--border-hairline);
+  font-size: var(--text-sm);
+}
+
+.issue-list li:last-child {
+  border-bottom: 0;
+}
+
+/* 嚴重度標記：文字 + 顏色雙重編碼 */
+.severity {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  letter-spacing: var(--tracking-wide);
+}
+
+.severity--blocking {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+.severity--warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.severity--info {
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}
+
+/* 健康檢查項目 */
+.health-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.health-list li {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  padding: var(--space-3) 0;
+  border-bottom: var(--border-hairline);
+  font-size: var(--text-sm);
+}
+
+.health-list li:last-child {
+  border-bottom: 0;
+}
+
+.health-status {
+  flex-shrink: 0;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+}
+
+.health-status--ok { color: var(--color-success); }
+.health-status--fail { color: var(--color-error); }
+
+.health-name {
+  flex-shrink: 0;
+  min-width: 140px;
+  font-weight: var(--weight-medium);
+}
+
+.health-detail {
+  color: var(--color-ink-soft);
+  overflow-wrap: anywhere;
+}
+
+/* ============================================================
+ * 4. 資料表格
+ * ============================================================ */
+
+.table-wrap {
+  /* 窄螢幕時允許表格橫向捲動 —— 這是「容器內」捲動，
+     不是 body 橫向捲動，因此不違反 AC-15。 */
+  overflow-x: auto;
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  min-width: 640px;
+}
+
+.data-table th,
+.data-table td {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  border-bottom: var(--border-hairline);
+  vertical-align: top;
+}
+
+.data-table thead th {
+  background: var(--color-surface-muted);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.data-table tbody tr:hover {
+  background: var(--color-surface-muted);
+}
+
+.data-table__title {
+  font-weight: var(--weight-medium);
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.data-table__title:hover {
+  color: var(--color-photon-deep);
+  text-decoration: underline;
+}
+
+.data-table__sub {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--color-ink-faint);
+  margin-top: var(--space-1);
+}
+
+.table-empty {
+  padding: var(--space-10);
+  text-align: center;
+  color: var(--color-ink-soft);
+}
+
+/* ============================================================
+ * 5. 表單
+ * ============================================================ */
+
+.admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.form-section {
+  background: var(--color-surface);
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  margin: 0;
+}
+
+.form-section__legend {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  padding: 0 var(--space-2);
+  margin-left: calc(var(--space-2) * -1);
+  color: var(--color-ink);
+}
+
+.form-section__hint {
+  font-size: var(--text-sm);
+  color: var(--color-ink-soft);
+  margin: var(--space-2) 0 var(--space-5);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: var(--space-5);
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.form-field--full {
+  grid-column: 1 / -1;
+}
+
+.form-field__label {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-ink);
+}
+
+/* 必填標示：星號 + 文字（不只靠符號）*/
+.form-field__required {
+  color: var(--color-error);
+  font-weight: var(--weight-bold);
+}
+
+.form-field__optional {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
+  color: var(--color-ink-faint);
+}
+
+.form-field__hint {
+  font-size: var(--text-xs);
+  color: var(--color-ink-faint);
+  line-height: var(--leading-snug);
+}
+
+/* 錯誤訊息：緊鄰欄位，且以 aria-describedby 關聯
+   （見 admin/_field.html）—— SAI §17 Forms 要求
+   「error message 指向欄位且有文字」。 */
+.form-field__error {
+  font-size: var(--text-xs);
+  color: var(--color-error);
+  font-weight: var(--weight-medium);
+}
+
+.form-field--has-error .input,
+.form-field--has-error .select,
+.form-field--has-error .textarea {
+  border-color: var(--color-error);
+  /* 除了邊框顏色，再加一條左側粗邊，
+     確保色盲使用者也能辨識（SAI §17）。 */
+  border-left-width: 3px;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.checkbox-field input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--color-photon-deep);
+}
+
+.checkbox-field label {
+  font-size: var(--text-sm);
+}
+
+/* 多值欄位群組（研究主題 / 事實 / 外部連結）*/
+.repeat-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.repeat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface-muted);
+  border: var(--border-hairline);
+  border-radius: var(--radius-sm);
+}
+
+/* 圖片預覽 */
+.media-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-5);
+  padding: var(--space-4);
+  background: var(--color-surface-muted);
+  border: var(--border-hairline);
+  border-radius: var(--radius-sm);
+}
+
+.media-preview img {
+  max-width: 160px;
+  border-radius: var(--radius-sm);
+  border: var(--border-hairline);
+}
+
+.media-preview__meta {
+  font-size: var(--text-xs);
+  color: var(--color-ink-faint);
+  overflow-wrap: anywhere;
+}
+
+/* ============================================================
+ * 6. 狀態徽章
+ * ============================================================ */
+
+.status-badge {
+  display: inline-block;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  border-radius: var(--radius-pill);
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.status-badge--published {
+  background: var(--color-success-bg);
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.status-badge--draft {
+  background: var(--color-surface-muted);
+  border-color: var(--color-line);
+  color: var(--color-ink-soft);
+}
+
+.status-badge--archived {
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning);
+  color: var(--color-warning);
+}
+
+.status-badge--featured {
+  background: var(--color-info-bg);
+  border-color: var(--color-info);
+  color: var(--color-info);
+}
+
+/* ============================================================
+ * 7. 動作列與危險操作
+ * ============================================================ */
+
+.action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-5);
+  background: var(--color-surface);
+  border: var(--border-hairline);
+  border-radius: var(--radius-md);
+}
+
+.action-bar--sticky {
+  position: sticky;
+  bottom: var(--space-4);
+  box-shadow: var(--shadow-md);
+  z-index: 10;
+}
+
+.action-bar__spacer {
+  flex: 1;
+}
+
+/* 封存等不可輕率的操作：外觀明確區別於一般按鈕
+   （見檔頭「已知限制 3」）。仍非破壞性 —— SAI §7.6
+   規定預設不硬刪，因此這裡不是紅色實心按鈕。 */
+.btn--danger {
+  background: transparent;
+  color: var(--color-error);
+  border-color: var(--color-error);
+}
+
+.btn--danger:hover {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+/* 內聯 POST 表單（發布/封存等單一動作）*/
+.inline-form {
+  display: inline;
+}
+
+/* 驗證結果面板（發布門檻） */
+.validation-panel {
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  margin-bottom: var(--space-6);
+  font-size: var(--text-sm);
+}
+
+.validation-panel--blocked {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error);
+}
+
+.validation-panel--warning {
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning);
+}
+
+.validation-panel--ok {
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success);
+}
+
+.validation-panel h3 {
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-2);
+}
+
+.validation-panel ul {
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+/* ============================================================
+ * 8. 登入頁（獨立版面，無 sidebar）
+ * ============================================================ */
+
+.login-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: var(--color-navy);
+  position: relative;
+  overflow: hidden;
+}
+
+.login-card {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-10) var(--space-8);
+  box-shadow: var(--shadow-md);
+}
+
+.login-card__brand {
+  text-align: center;
+  margin-bottom: var(--space-8);
+}
+
+.login-card__brand h1 {
+  font-size: var(--text-lg);
+  margin-bottom: var(--space-1);
+}
+
+.login-card__brand p {
+  font-size: var(--text-xs);
+  color: var(--color-ink-faint);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* ============================================================
+ * 9. Responsive
+ * ============================================================ */
+
+@media (max-width: 900px) {
+  .admin-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-sidebar {
+    position: static;
+    height: auto;
+    flex-direction: column;
+  }
+
+  /* 窄螢幕時側欄導覽改為橫向捲動的水平清單，
+     節省垂直空間。 */
+  .admin-nav__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .admin-nav__list li {
+    margin-bottom: 0;
+  }
+
+  .admin-nav__link {
+    border-left: 0;
+    border-bottom: 3px solid transparent;
+  }
+
+  .admin-nav__link[aria-current="page"] {
+    border-left: 0;
+    border-bottom-color: var(--color-photon-bright);
+  }
+
+  .admin-main {
+    padding: var(--space-6) var(--space-4) var(--space-12);
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .action-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .action-bar .btn {
+    width: 100%;
+  }
+
+  .action-bar__spacer {
+    display: none;
+  }
+}

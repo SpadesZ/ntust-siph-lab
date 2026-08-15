@@ -1,0 +1,26 @@
+{#
+============================================================
+NTUST SiPh Lab - 400 Bad Request（含 CSRF 驗證失敗）
+檔案路徑：app/templates/errors/400.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §11.2 驗收：缺 token 的 POST = 400/403）：
+  CSRFError 由 app/__init__.py 的 handler 導向此頁。
+
+reason 變數說明：
+  來自 Flask-WTF 的 CSRFError.description，是固定的框架訊息
+  （例如 "The CSRF token is missing."），非使用者輸入，
+  因此顯示它不構成注入風險，且能幫助管理者理解原因。
+  Jinja autoescape 仍會處理跳脫。
+============================================================
+#}
+{% extends "errors/_layout.html" %}
+{% block error_code %}400{% endblock %}
+{% block error_title %}請求無法處理{% endblock %}
+{% block error_body %}
+<p>此次送出的表單未通過安全驗證，可能是頁面停留過久導致驗證權杖過期。</p>
+{% if reason %}
+<p><small>技術原因：{{ reason }}</small></p>
+{% endif %}
+<p>請回到上一頁重新整理後再送出一次。</p>
+{% endblock %}
