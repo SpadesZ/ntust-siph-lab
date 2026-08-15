@@ -1,0 +1,152 @@
+# ============================================================
+# NTUST SiPh Lab - Cloud Run 宣告式服務設定（選用）
+#
+# 用途（SAI §9.4 目錄樹）：
+#   把 Cloud Run 的設定納入版本控制，避免「只存在於某人終端機
+#   歷史中的 gcloud run deploy 指令」。使用方式：
+#
+#     gcloud run services replace deploy/service.yaml --region=asia-east1
+#
+#   deploy/cloudrun.md 的指令式流程與本檔等價；擇一使用即可。
+#   本檔的好處是設定漂移可由 git diff 看出來。
+#
+# 使用前必須替換的預留位置：
+#   PROJECT_ID / REGION / DOMAIN / INSTANCE
+#
+# 硬性規定：
+#   1. 禁止在本檔填入任何 secret 值。SECRET_KEY 與 DB 密碼一律
+#      以 secretKeyRef 引用 Secret Manager（SAI §11.2、[S21]）。
+#   2. 禁止把 STORAGE_BACKEND 設為 local —— Cloud Run 的
+#      container filesystem 不具持久性 [S17]，ProductionConfig
+#      會直接拒絕啟動。
+#   3. 禁止把 DATABASE_URL 設為 sqlite（ADR-004）。
+#
+# 維護契約：
+#   新增環境變數時必須同步更新 .env.example、app/config.py 與
+#   docs/cloudrun-deployment.md，否則會出現「本機可跑、
+#   Cloud Run 啟動失敗」。
+# ============================================================
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: ntust-siph-lab
+  labels:
+    cloud.googleapis.com/location: REGION
+  annotations:
+    run.googleapis.com/ingress: all
+
+spec:
+  template:
+    metadata:
+      annotations:
+        # Cloud SQL 連線（SAI §21.2、[S18]）
+        run.googleapis.com/cloudsql-instances: PROJECT_ID:REGION:siph-lab-db
+        # 研究室網站流量低；上限刻意壓低以控制成本
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "4"
+        run.googleapis.com/startup-cpu-boost: "true"
+
+    spec:
+      serviceAccountName: siph-lab-run@PROJECT_ID.iam.gserviceaccount.com
+      containerConcurrency: 40
+      timeoutSeconds: 60
+
+      containers:
+        - image: REGION-docker.pkg.dev/PROJECT_ID/siph-lab/ntust-siph-lab:GIT_SHA
+          ports:
+            - name: http1
+              containerPort: 8000
+
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+
+          env:
+            - name: APP_ENV
+              value: production
+
+            - name: PUBLIC_BASE_URL
+              value: https://DOMAIN
+
+            - name: DB_BACKEND
+              value: postgresql
+
+            # Cloud SQL 走 unix socket；密碼由 Secret Manager 注入。
+            - name: DATABASE_URL
+              value: postgresql+psycopg://siph_app:$(DB_PASSWORD)@/siph_lab?host=/cloudsql/PROJECT_ID:REGION:siph-lab-db
+
+            - name: STORAGE_BACKEND
+              value: gcs
+
+            - name: GCS_BUCKET
+              value: PROJECT_ID-siph-media
+
+            # bucket 為私有時指向 CDN / Load Balancer；
+            # 公開 bucket 可留空（見 app/storage/gcs.py 已知限制 2）。
+            - name: GCS_PUBLIC_BASE_URL
+              value: ""
+
+            - name: SESSION_COOKIE_SECURE
+              value: "true"
+
+            - name: PERMANENT_SESSION_LIFETIME_HOURS
+              value: "8"
+
+            - name: LOG_LEVEL
+              value: INFO
+
+            - name: ROBOTS_POLICY
+              value: public
+
+            - name: ENABLE_LLMS_TXT
+              value: "false"
+
+            - name: WEB_CONCURRENCY
+              value: "2"
+
+            - name: DB_POOL_SIZE
+              value: "5"
+
+            - name: DB_MAX_OVERFLOW
+              value: "2"
+
+            # --- Secrets（Secret Manager，[S21]）---
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: siph-secret-key
+                  key: latest
+
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: siph-db-password
+                  key: latest
+
+            # AuditLog 的 IP 雜湊 salt（SAI §8.8）。
+            # 必須由環境提供：使用固定預設值會讓 IPv4 雜湊
+            # 可被完整反查（見 app/models/audit_log.py）。
+            - name: AUDIT_IP_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: siph-audit-ip-salt
+                  key: latest
+
+          startupProbe:
+            httpGet:
+              path: /healthz
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 6
+
+          livenessProbe:
+            httpGet:
+              path: /healthz
+            periodSeconds: 30
+            timeoutSeconds: 5
+
+  traffic:
+    # 部署新 revision 後先不切流量，通過 smoke test 才切（SAI §21.6）。
+    - percent: 100
+      latestRevision: true
