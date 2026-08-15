@@ -172,6 +172,59 @@ Tab 到帳號 → 密碼 → Enter 登入 → Tab 到「新增成員」→
 
 ## 目前狀態
 
-最近一次完整驗收：`____________`（日期）
-執行者：`____________`
-結果：`____________`
+**最近一次驗收：2026-08-15（獨立審查 + 修復後複驗）**
+
+### 自動化測試
+
+```
+pytest              -> 664 passed, 3 skipped
+pytest -m acceptance -> 93 passed
+```
+
+3 項 skip 全部是 PostgreSQL 測試（未設定 `TEST_POSTGRES_URL`）。
+
+### 逐項狀態
+
+| AC | 狀態 | 依據 |
+| --- | --- | --- |
+| AC-01 | ✅ 已驗證 | 22 條 admin route 逐一探測，零外洩 |
+| AC-02 | ✅ 已驗證 | 實測狀態序列 `[200,200,200,429]` |
+| AC-03 | ✅ 已驗證 | 實機登入 → `/admin` 200 |
+| AC-04 | ✅ 已驗證 | 建立→草稿不可見→發布→出現於 /members |
+| AC-05 | ✅ 已驗證 | canonical / title / description / Person JSON-LD 齊備 |
+| AC-06 | ✅ 已驗證 | 經真實 HTTP route；slug 不變、成果關聯保留 |
+| AC-07 | ✅ 已驗證 | 雙向連結實測 |
+| AC-08 | ✅ 已驗證 | 草稿不在列表、sitemap，detail 404 |
+| AC-09 | ✅ 已驗證 | 發布後出現於列表與 sitemap |
+| AC-10 | ✅ 已驗證 | 舊 slug 301 導向新 slug |
+| AC-11 | ✅ 已驗證 | `.php`、`.svg`、polyglot 檔案皆被拒 |
+| AC-12 | ✅ 已驗證 | 有圖無 alt 阻擋發布 |
+| **AC-13** | ⬜ **未驗證** | **Docker engine 在審查環境無法啟動。設定（三個 bind mount）靜態檢查正確，但從未實證。上線前必須執行本文件的人工程序。** |
+| AC-14 | ✅ 已驗證 | integrity_check ok、FK 無孤兒、checksum 相符；另測損毀備份會被偵測 |
+| AC-15 | ⬜ 未驗證 | viewport meta 存在；無真實瀏覽器 320px 檢查 |
+| AC-16 | ⬜ 未驗證 | 語意標記與 focus 樣式齊備；無真實鍵盤操作 |
+| AC-17 | ⚠️ 部分 | JSON-LD 有效、型別正確、麵包屑同源；「內容是否屬實」需人工 sign-off |
+| AC-18 | ⚠️ 部分 | H1 唯一已驗證；鍵盤同 AC-16 |
+| AC-19 | ⚠️ 部分 | 404 無 stack trace 已驗證；未觸發真正的 500 |
+| **AC-20** | ⬜ **未驗證** | Dockerfile `CMD gunicorn` 靜態正確且無 `flask run`；gunicorn 無法在 Windows 執行，未實跑 |
+| AC-21 | ✅ 已驗證 | 19 筆欄位完整 |
+| AC-22 | ✅ 已驗證 | UNRESOLVED = 0 |
+| AC-23 | ✅ 已驗證 | 17 項母站內容實測渲染於前台 |
+| AC-24 | ✅ 已驗證 | LC-002 sha256 與宣稱值逐位元相符 |
+| AC-25 | ✅ 已驗證 | 平台元素排除；LC-019 有核准紀錄 |
+| AC-26 | ⚠️ 部分 | 報告 0 unresolved；「舊站不得提前關閉」屬程序條件 |
+
+**統計：已驗證 18／部分 4／未驗證 4／失敗 0**
+
+### 上線前必須補做
+
+1. **PostgreSQL 雙 DB 矩陣（Gate G2）** — 目前 3 項測試 skip
+   ```bash
+   docker run -d --name siph-pg -e POSTGRES_PASSWORD=pw -p 5432:5432 postgres:16
+   docker exec siph-pg psql -U postgres -c "CREATE DATABASE siph_test;"
+   TEST_POSTGRES_URL=postgresql+psycopg://postgres:pw@localhost:5432/siph_test pytest -m postgres
+   ```
+2. **AC-13 容器重建持久性** — 依本文件的人工程序執行
+3. **AC-20 gunicorn 實跑** — `docker compose exec web ps aux | grep gunicorn`
+4. **AC-15 / AC-16 人工檢查** — 320px 與純鍵盤操作
+5. **內容 sign-off** — 教授核對後簽署 `content_signoff.md`
