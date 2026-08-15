@@ -57,6 +57,7 @@ def seeded_app(app):
 # ----------------------------------------------------------------------
 # AC-21：inventory 欄位完整性
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac21_all_legacy_items_have_required_fields():
     """AC-21：所有 LC 項目都有 source、type、target、status，
     不得有空白 target/status。
@@ -81,6 +82,7 @@ def test_ac21_all_legacy_items_have_required_fields():
             assert value, f"{item.legacy_id} 的 {field} 欄位為空（AC-21）"
 
 
+@pytest.mark.acceptance
 def test_ac21_inventory_covers_lc001_to_lc019():
     """SAI §2.1 定義 LC-001 ~ LC-019，一筆都不能少。"""
     expected = {f"LC-{n:03d}" for n in range(1, 20)}
@@ -90,12 +92,14 @@ def test_ac21_inventory_covers_lc001_to_lc019():
     assert not missing, f"Legacy inventory 缺少項目：{sorted(missing)}"
 
 
+@pytest.mark.acceptance
 def test_ac21_legacy_ids_are_unique():
     """legacy_id 不得重複（重複會讓 mapping 對不上）。"""
     ids = [item.legacy_id for item in baseline.LEGACY_ITEMS]
     assert len(ids) == len(set(ids)), "legacy_id 有重複"
 
 
+@pytest.mark.acceptance
 def test_ac21_approval_required_for_rewrite_or_remove():
     """SAI §22.2：APPROVED_REWRITE / APPROVED_REMOVE 必須有核准紀錄。"""
     for item in baseline.LEGACY_ITEMS:
@@ -126,6 +130,7 @@ def test_status_constants_match_application_model():
 # ----------------------------------------------------------------------
 # AC-22：UNRESOLVED = 0
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac22_no_blocking_status_remains():
     """AC-22：所有項目必須是 MIGRATED / APPROVED_REWRITE /
     APPROVED_REMOVE；UNRESOLVED = 0。
@@ -138,6 +143,7 @@ def test_ac22_no_blocking_status_remains():
     )
 
 
+@pytest.mark.acceptance
 def test_ac22_status_summary_is_complete():
     """統計數字必須涵蓋全部項目。"""
     summary = baseline.status_summary()
@@ -147,6 +153,7 @@ def test_ac22_status_summary_is_complete():
 # ----------------------------------------------------------------------
 # AC-23：母站內容可在新站被找到
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac23_professor_fields_are_migrated_verbatim(seeded_app):
     """AC-23：教授姓名、職稱、學歷、Email、外鏈逐字相符。"""
     from sqlalchemy import select
@@ -168,6 +175,7 @@ def test_ac23_professor_fields_are_migrated_verbatim(seeded_app):
         assert prof.external_url == baseline.PROFESSOR["external_url"]
 
 
+@pytest.mark.acceptance
 def test_ac23_professor_is_visible_on_public_site(seeded_app):
     """AC-23：教授資料實際出現在前台頁面上。"""
     client = seeded_app.test_client()
@@ -179,6 +187,7 @@ def test_ac23_professor_is_visible_on_public_site(seeded_app):
         assert baseline.PROFESSOR["email_public"] in html, f"{path} 缺少教授 Email"
 
 
+@pytest.mark.acceptance
 def test_ac23_all_six_expertise_items_present(seeded_app):
     """AC-23 / SAI §22.3：六項專長集合比對，不可漏項。"""
     client = seeded_app.test_client()
@@ -204,11 +213,13 @@ def test_ac23_all_six_expertise_items_present(seeded_app):
             )
 
 
+@pytest.mark.acceptance
 def test_ac23_expertise_count_is_exactly_six():
     """母站專長為六項，不多不少（防止日後誤增誤刪）。"""
     assert len(baseline.EXPERTISE) == 6
 
 
+@pytest.mark.acceptance
 def test_ac23_all_four_students_are_published_and_findable(seeded_app):
     """AC-23：四位碩二生姓名可在 /members 被找到。"""
     from sqlalchemy import select
@@ -238,6 +249,7 @@ def test_ac23_all_four_students_are_published_and_findable(seeded_app):
             assert student["name_zh"] in members_html
 
 
+@pytest.mark.acceptance
 def test_ac23_students_marked_as_pending_detail(seeded_app):
     """四位學生必須標記為待補（ADR-012 的核准條件）。
 
@@ -259,6 +271,7 @@ def test_ac23_students_marked_as_pending_detail(seeded_app):
             )
 
 
+@pytest.mark.acceptance
 def test_ac23_no_fabricated_data_for_students(seeded_app):
     """SAI §2.3：母站沒有的資料不得被填入。
 
@@ -280,6 +293,7 @@ def test_ac23_no_fabricated_data_for_students(seeded_app):
             assert not person.email_public, "母站沒有學生 Email，不得填入"
 
 
+@pytest.mark.acceptance
 def test_ac23_no_fabricated_research_outputs(seeded_app):
     """母站沒有研究成果，seed 後資料庫必須是空的。"""
     from sqlalchemy import func, select
@@ -294,6 +308,7 @@ def test_ac23_no_fabricated_research_outputs(seeded_app):
         )
 
 
+@pytest.mark.acceptance
 def test_ac23_no_fabricated_alumni(seeded_app):
     """母站沒有畢業生，seed 後不得存在。"""
     from sqlalchemy import func, select
@@ -309,6 +324,7 @@ def test_ac23_no_fabricated_alumni(seeded_app):
         assert count == 0, "母站沒有畢業生，系統不得自行產生"
 
 
+@pytest.mark.acceptance
 def test_ac23_lab_name_migrated(seeded_app):
     """LC-001：Lab 名稱逐字相符並出現在頁面上。"""
     from app.models.site_setting import SiteSetting
@@ -321,6 +337,7 @@ def test_ac23_lab_name_migrated(seeded_app):
     assert baseline.LAB_NAME in html
 
 
+@pytest.mark.acceptance
 def test_ac23_ntust_external_link_present(seeded_app):
     """LC-013：NTUST 外鏈出現在前台。"""
     client = seeded_app.test_client()
@@ -331,6 +348,7 @@ def test_ac23_ntust_external_link_present(seeded_app):
 # ----------------------------------------------------------------------
 # AC-24：媒體 manifest 與 checksum
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac24_professor_photo_asset_exists_with_correct_checksum():
     """AC-24：LC-002 原始資產存在且 checksum 相符。"""
     import hashlib
@@ -348,6 +366,7 @@ def test_ac24_professor_photo_asset_exists_with_correct_checksum():
     )
 
 
+@pytest.mark.acceptance
 def test_ac24_photo_is_stored_and_referenced(seeded_app):
     """AC-24：照片已寫入 storage 且 DB 有正確引用。"""
     from sqlalchemy import select
@@ -368,6 +387,7 @@ def test_ac24_photo_is_stored_and_referenced(seeded_app):
         assert prof.photo_alt_zh
 
 
+@pytest.mark.acceptance
 def test_ac24_media_manifest_file_exists():
     """AC-24：media_manifest.csv 存在且包含 LC-002。"""
     manifest = LEGACY_DIR / "media_manifest.csv"
@@ -378,6 +398,7 @@ def test_ac24_media_manifest_file_exists():
     assert baseline.PROFESSOR["photo_sha256"] in content, "manifest 必須記錄 checksum"
 
 
+@pytest.mark.acceptance
 def test_ac24_seed_refuses_tampered_asset(app, tmp_path, monkeypatch):
     """資產 checksum 不符時必須中止，不得靜默使用錯誤檔案。"""
     from scripts import seed_from_google_sites as seeder
@@ -397,6 +418,7 @@ def test_ac24_seed_refuses_tampered_asset(app, tmp_path, monkeypatch):
 # ----------------------------------------------------------------------
 # AC-25：平台元素排除與 embed 決策
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac25_platform_chrome_exclusions_recorded():
     """AC-25：SAI §2.2 的六項平台元素都有明確排除紀錄。"""
     expected = {
@@ -416,6 +438,7 @@ def test_ac25_platform_chrome_exclusions_recorded():
         assert item.reason.strip(), f"「{item.element}」缺少排除理由"
 
 
+@pytest.mark.acceptance
 def test_ac25_calendar_embed_has_explicit_decision():
     """AC-25：LC-019 必須有明確的 MIGRATED 或 APPROVED_REMOVE 決策。"""
     calendar = baseline.find("LC-019")
@@ -434,6 +457,7 @@ def test_ac25_calendar_embed_has_explicit_decision():
         assert calendar.approval.strip(), "APPROVED_REMOVE 必須有核准紀錄"
 
 
+@pytest.mark.acceptance
 def test_ac25_platform_chrome_not_present_on_new_site(seeded_app):
     """平台 boilerplate 不得出現在新站上。"""
     client = seeded_app.test_client()
@@ -446,6 +470,7 @@ def test_ac25_platform_chrome_not_present_on_new_site(seeded_app):
 # ----------------------------------------------------------------------
 # AC-26：difference report 無未解決缺漏
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac26_evidence_files_exist():
     """SAI §9.4 要求的六份 legacy 證據檔案都必須存在。"""
     required = [
@@ -462,6 +487,7 @@ def test_ac26_evidence_files_exist():
         assert path.stat().st_size > 0, f"{name} 為空檔"
 
 
+@pytest.mark.acceptance
 def test_ac26_verification_script_passes(seeded_app, tmp_path, monkeypatch):
     """AC-26：verify_migration 的所有檢查必須通過。
 
@@ -485,6 +511,7 @@ def test_ac26_verification_script_passes(seeded_app, tmp_path, monkeypatch):
     )
 
 
+@pytest.mark.acceptance
 def test_ac26_difference_report_declares_zero_unresolved():
     """AC-26：difference_report.md 必須宣告 UNRESOLVED = 0。"""
     report = (LEGACY_DIR / "difference_report.md").read_text(encoding="utf-8")
@@ -498,6 +525,7 @@ def test_ac26_difference_report_declares_zero_unresolved():
     )
 
 
+@pytest.mark.acceptance
 def test_ac26_signoff_records_the_three_decisions():
     """content_signoff.md 必須記錄三項管理者裁示。"""
     signoff = (LEGACY_DIR / "content_signoff.md").read_text(encoding="utf-8")

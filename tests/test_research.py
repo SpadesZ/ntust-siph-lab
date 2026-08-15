@@ -29,6 +29,7 @@ import pytest
 # ----------------------------------------------------------------------
 # AC-07：Person <-> ResearchOutput 雙向導航
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac07_bidirectional_navigation(client, sample_person, sample_output):
     """AC-07：成果頁可連到人物頁，人物頁可連到成果頁。"""
     # 成果頁 -> 人物頁
@@ -42,6 +43,7 @@ def test_ac07_bidirectional_navigation(client, sample_person, sample_output):
     assert sample_output["title"] in person_html
 
 
+@pytest.mark.acceptance
 def test_ac07_admin_can_link_people_to_output(app, sample_person):
     """關聯必須指向真實存在的人物，否則拒絕。"""
     from app.models.mixins import OutputType
@@ -102,6 +104,7 @@ def test_duplicate_person_link_is_deduplicated(app, sample_person, sample_output
 # ----------------------------------------------------------------------
 # AC-08 / AC-09：發布狀態與可見性
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac09_published_output_appears_in_index_and_sitemap(client, sample_output):
     """AC-09：published 成果出現在 /research 與 sitemap。"""
     index_html = client.get("/research").get_data(as_text=True)
@@ -112,6 +115,7 @@ def test_ac09_published_output_appears_in_index_and_sitemap(client, sample_outpu
     assert f'/research/{sample_output["slug"]}' in sitemap
 
 
+@pytest.mark.acceptance
 def test_ac08_draft_output_excluded_from_public_and_sitemap(app, client, sample_output):
     """AC-08：draft 成果不出現在 public 也不進 sitemap。"""
     from app.extensions import db
@@ -172,6 +176,7 @@ def test_featured_requires_published(app, sample_output):
 # ----------------------------------------------------------------------
 # AC-10：slug 變更產生 301
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac10_slug_change_creates_redirect(app, client, sample_output):
     """AC-10：修改已發布成果的 slug 會建立 301 redirect。"""
     from app.extensions import db
@@ -279,6 +284,7 @@ def test_publish_requires_title(app):
             )
 
 
+@pytest.mark.acceptance
 def test_ac12_hero_image_without_alt_blocks_publish(app, sample_output, png_bytes):
     """AC-12（成果版本）：有主圖但缺 alt 時阻擋發布。"""
     import io

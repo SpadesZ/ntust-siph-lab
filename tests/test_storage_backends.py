@@ -241,6 +241,7 @@ def test_gcs_backend_validates_keys_like_local():
     "filename",
     ["evil.php", "script.js", "shell.sh", "doc.pdf", "archive.zip", "vector.svg", "noext"],
 )
+@pytest.mark.acceptance
 def test_ac11_disallowed_extensions_are_rejected(app, png_bytes, filename):
     """AC-11：非允許副檔名被拒絕（含 SVG，SAI §16）。"""
     from werkzeug.datastructures import FileStorage
@@ -255,6 +256,7 @@ def test_ac11_disallowed_extensions_are_rejected(app, png_bytes, filename):
             MediaService.save_image(upload, purpose="people")
 
 
+@pytest.mark.acceptance
 def test_ac11_disguised_file_is_rejected(app):
     """副檔名偽裝成圖片但內容不是圖片 -> 拒絕。
 
@@ -275,6 +277,7 @@ def test_ac11_disguised_file_is_rejected(app):
             MediaService.save_image(upload, purpose="people")
 
 
+@pytest.mark.acceptance
 def test_ac11_oversized_upload_is_rejected(app, png_bytes):
     """超過大小上限的檔案被拒絕（SAI §16）。"""
     from werkzeug.datastructures import FileStorage

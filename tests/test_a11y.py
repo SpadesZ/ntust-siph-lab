@@ -187,6 +187,7 @@ def test_decorative_elements_are_aria_hidden(client):
 # ----------------------------------------------------------------------
 # AC-16：表單可及性
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac16_admin_forms_have_associated_labels(logged_in_client):
     """AC-16：後台表單的每個輸入都有關聯 label。"""
     from bs4 import BeautifulSoup
@@ -213,6 +214,7 @@ def test_ac16_admin_forms_have_associated_labels(logged_in_client):
             )
 
 
+@pytest.mark.acceptance
 def test_ac16_forms_use_native_submit_buttons(logged_in_client):
     """AC-16：表單以原生 submit button 送出（可用 Enter 觸發）。"""
     from bs4 import BeautifulSoup
@@ -226,6 +228,7 @@ def test_ac16_forms_use_native_submit_buttons(logged_in_client):
     assert form.find("button", attrs={"type": "submit"}), "表單必須有原生 submit button"
 
 
+@pytest.mark.acceptance
 def test_ac16_required_fields_are_marked(logged_in_client):
     """必填欄位在畫面上有明確標示（SAI §14.2 UX contract）。"""
     html = logged_in_client.get("/admin/people/new").get_data(as_text=True)
@@ -258,12 +261,14 @@ def read_css(name: str) -> str:
     return (CSS_DIR / name).read_text(encoding="utf-8")
 
 
+@pytest.mark.acceptance
 def test_ac15_body_prevents_horizontal_overflow():
     """AC-15：body 設定 overflow-x: hidden 作為最後防線。"""
     css = read_css("main.css")
     assert "overflow-x: hidden" in css
 
 
+@pytest.mark.acceptance
 def test_ac15_grids_use_min_width_guard():
     """自適應 grid 的最小欄寬不得是會造成溢出的固定值。
 
@@ -292,6 +297,7 @@ def test_ac15_grids_use_min_width_guard():
     assert checked > 0, "前置條件：CSS 應使用 minmax 版面"
 
 
+@pytest.mark.acceptance
 def test_ac15_narrow_breakpoint_defined():
     """必須有針對極窄螢幕的斷點。"""
     css = read_css("main.css")
