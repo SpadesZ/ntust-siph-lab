@@ -61,6 +61,8 @@
 #        docker compose exec web flask admin create --generate
 #      刻意不自動執行 —— 自動 migration 在多實例環境會產生
 #      競態，且 seed 應該是明確的人為決定。
+#   4. environment 區塊的預設值僅適用本機。任何正式部署都必須
+#      改由 Cloud Run env + Secret Manager 提供（SAI §21.4）。
 #
 # 維護契約：
 #   新增需要持久化的目錄時，必須同時：
@@ -83,14 +85,33 @@ services:
     image: ntust-siph-lab:local
     container_name: siph-lab-web
 
-    # env_file 缺少時 compose 會失敗，因此請先複製：
-    #   cp .env.example .env.local
+    # .env.local 為「選用覆寫」而非必要條件。
+    #
+    # 為什麼 required: false：
+    #   此檔已列入 .gitignore，全新 clone 時必然不存在。
+    #   若設為必要，`docker compose up`（本檔與 Dockerfile 都把它
+    #   列為驗證方式）會在新環境直接失敗，且錯誤訊息不會提示解法。
+    #   下方 environment 已提供可運作的本機預設值，
+    #   因此沒有 .env.local 也能完整啟動；有的話則覆寫這些值。
     env_file:
-      - .env.local
+      - path: .env.local
+        required: false
 
-    # 覆寫 image 中的 production 預設值。
+    # 本機預設值。與 .env.example 一致；.env.local 可逐項覆寫。
+    # 注意：這裡不得放入任何正式機密（SAI §11.2 Secret leak）。
     environment:
       APP_ENV: local
+      # 僅供本機開發。production 由 Secret Manager 注入 [S21]。
+      SECRET_KEY: ${SECRET_KEY:-dev-only-insecure-secret-key}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////app/instance/siph_lab.db}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}
+      BACKUP_DIR: ${BACKUP_DIR:-/app/backups}
+      MAX_CONTENT_LENGTH: ${MAX_CONTENT_LENGTH:-8388608}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ROBOTS_POLICY: ${ROBOTS_POLICY:-public}
 
     command: gunicorn -c gunicorn.conf.py wsgi:app
 
