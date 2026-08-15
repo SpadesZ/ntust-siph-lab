@@ -343,6 +343,34 @@ def register_cli_commands(app) -> None:
         for line in summary:
             click.echo(f"  {line}")
 
+    @seed_cli.command("publications")
+    @click.option(
+        "--force",
+        is_flag=True,
+        default=False,
+        help="已存在（相同 DOI）時仍更新書目欄位。",
+    )
+    def seed_publications(force: bool):
+        """匯入教授已查證的論文著作。
+
+        與 `seed legacy` 是不同來源：母站沒有研究成果資料，
+        這些論文由研究室提供清單並經 Crossref 查證
+        （SAI §2.3「需另有 Lab 確認來源」）。
+
+        實際邏輯在 scripts/seed_publications.py。
+        """
+        from scripts.seed_publications import run_seed as run_publication_seed
+
+        try:
+            summary = run_publication_seed(force=force)
+        except RuntimeError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        db.session.commit()
+        click.secho("✔ 論文著作匯入完成：", fg="green")
+        for line in summary:
+            click.echo(f"  {line}")
+
     app.cli.add_command(admin_cli)
     app.cli.add_command(check_cli)
     app.cli.add_command(seed_cli)

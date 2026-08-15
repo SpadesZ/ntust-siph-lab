@@ -220,13 +220,13 @@ Legacy 對照（SAI §22.3 Old -> New Mapping）：
   {% endif %}
 
   {#
-    延伸瀏覽。CTA 文案與主導覽一致使用「加入我們」——
-    同一個目的地在站內出現兩種名稱會讓使用者以為是不同頁面。
+    延伸瀏覽只連往內容頁。招募入口固定在主導覽的「加入我們」，
+    不在各頁重複放 CTA —— 每頁都出現同一顆招募按鈕，
+    既佔版面也稀釋了各頁真正的下一步（見 home.html 末的 IA 說明）。
   #}
   <nav class="next-steps" aria-label="延伸瀏覽">
-    <a class="btn btn--secondary" href="{{ url_for('public.members') }}">研究成員</a>
+    <a class="btn btn--primary" href="{{ url_for('public.members') }}">研究成員</a>
     <a class="btn btn--secondary" href="{{ url_for('public.research_index') }}">研究成果</a>
-    <a class="btn btn--primary" href="{{ url_for('public.join') }}">加入我們</a>
   </nav>
 
 </div>

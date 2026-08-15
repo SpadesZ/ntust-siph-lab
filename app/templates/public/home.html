@@ -108,26 +108,27 @@ Hero 規則（SAI §5.1 + §6.1）：
         <span class="section-label">Research Focus</span>
         <h2 class="section-title trace-underline" id="research-focus-heading">研究方向</h2>
       </div>
-      <a class="section-link" href="{{ url_for('public.about') }}">了解研究室 →</a>
+      <a class="section-link" href="{{ url_for('public.about') }}">各主題說明 →</a>
     </div>
 
+    {#
+      首頁只列主題名稱（可掃讀），完整說明與英文名稱在 /about。
+
+      原本首頁與 /about 輸出「完全相同」的標記 —— 同一份內容
+      在兩頁各佔一大塊版面，訪客讀第二次不會得到新資訊，
+      也讓首頁的重點被稀釋。現在兩頁有明確分工：
+        首頁  = 這個研究室關注哪些主題（掃一眼就懂）
+        /about = 每個主題是什麼（參考用的完整版）
+    #}
     {% if research_focus %}
-    <div class="card-grid">
+    <ul class="focus-chip-list">
       {% for item in research_focus %}
-      <div class="focus-item">
+      <li class="focus-chip">
         <span class="ring-marker" aria-hidden="true"></span>
-        <div>
-          <h3 class="focus-item__title">{{ item.title_zh }}</h3>
-          {% if item.title_en %}
-          <p class="focus-item__desc"><em>{{ item.title_en }}</em></p>
-          {% endif %}
-          {% if item.description_zh %}
-          <p class="focus-item__desc">{{ item.description_zh }}</p>
-          {% endif %}
-        </div>
-      </div>
+        <span>{{ item.title_zh }}</span>
+      </li>
       {% endfor %}
-    </div>
+    </ul>
     {% else %}
     <div class="empty-state">
       <p class="empty-state__title">研究方向尚未設定</p>
