@@ -112,6 +112,7 @@ def _fresh_target(tmp_path: Path, name: str = "target.db") -> str:
 # ----------------------------------------------------------------------
 # 1. 完整 round trip
 # ----------------------------------------------------------------------
+@pytest.mark.slow
 def test_round_trip_preserves_all_content(app, tmp_path):
     """export -> import 之後，每一張表的內容 checksum 都必須相符。"""
     seeded = _seeded_app(app)
@@ -260,6 +261,7 @@ def test_import_rejects_unknown_package_version(app, tmp_path):
 # ----------------------------------------------------------------------
 # 3. 目標非空的保護
 # ----------------------------------------------------------------------
+@pytest.mark.slow
 def test_import_refuses_non_empty_target(app, tmp_path):
     """重複匯入必須被拒（避免主鍵衝突與資料混合）。"""
     _seeded_app(app)
@@ -347,6 +349,7 @@ def test_export_refuses_non_sqlite_source(app, tmp_path):
     reason="未設定 TEST_POSTGRES_URL；PostgreSQL round trip 未驗證。"
     "上線前必須依 SAI §21.1 G2 執行此測試。",
 )
+@pytest.mark.slow
 def test_round_trip_to_postgres(app, tmp_path):
     """對真正的 PostgreSQL 執行 round trip，並驗證 sequence 已重設。
 

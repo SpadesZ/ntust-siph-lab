@@ -92,6 +92,22 @@ _INVISIBLE_CHARS = re.compile(r"[​-‏‪-‮﻿]")
 #: 連續空白（不含換行）。
 _HORIZONTAL_WS = re.compile(r"[ \t]+")
 
+#: 合法的主機名樣式（可含 userinfo 與 port，由呼叫端先行剝除）。
+#:
+#: 為什麼需要這個檢查：
+#:   normalize_url 會為沒有 scheme 的輸入自動補上 https://（方便管理員
+#:   直接貼 "example.com"）。但 urlparse 不驗證 netloc 的內容，
+#:   因此 "not a url" 會變成 "https://not a url" 並被判定為合法 ——
+#:   netloc 非空、scheme 合法，兩項檢查都通過。
+#:   結果是明顯的錯字被存進 orcid_url / scholar_url 等欄位，
+#:   前台產生一個永遠點不開的連結，而發布檢查不會攔截。
+#:
+#: 規則：只允許主機名合法字元，且必須含至少一個點。
+#: 本專案的外部連結（NTUST、ORCID、Scholar、GitHub）皆為公開網域，
+#: 一定含點；要求含點可擋掉絕大多數錯字，代價是不支援
+#: 無點的內網主機名 —— 對研究室官網而言是正確的取捨。
+_HOSTNAME_PATTERN = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+\.?$")
+
 
 def normalize_text(value: str | None) -> str | None:
     """單行文字正規化：去零寬字元、收斂空白、trim。
@@ -169,6 +185,17 @@ def normalize_url(value: str | None) -> str | None:
     if parsed.scheme.lower() not in _ALLOWED_SCHEMES:
         return None
     if not parsed.netloc:
+        return None
+
+    # 主機名必須是合法形式（見 _HOSTNAME_PATTERN 的說明）。
+    # 剝除 userinfo 與 port 後再比對。
+    host = parsed.netloc.rsplit("@", 1)[-1]
+    if host.startswith("["):
+        # IPv6 literal，例如 [::1]:8000 —— 交由 urlparse 判斷即可。
+        host = host.split("]", 1)[0] + "]"
+    else:
+        host = host.rsplit(":", 1)[0] if ":" in host else host
+    if not _HOSTNAME_PATTERN.match(host):
         return None
 
     # 重新組裝，確保輸出是正規化形式。
