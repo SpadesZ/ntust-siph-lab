@@ -115,13 +115,25 @@ def test_main_navigation_marks_current_page(client):
 
 
 def test_footer_links_are_real_anchors(client):
-    """AC-18：footer 連結必須是真正的 <a>（可用鍵盤到達）。"""
-    soup = soup_of(client, "/")
-    footer_links = soup.find("footer").find_all("a")
+    """AC-18：footer 連結必須是真正的 <a>（可用鍵盤到達）。
 
-    assert len(footer_links) >= 5, "footer 應包含網站導覽連結"
+    注意：這裡不斷言連結「數量」。footer 刻意不再逐項重複主導覽
+    （見 tests/test_information_architecture.py::
+    test_footer_does_not_duplicate_main_nav），因此連結數會隨
+    站台設定而變。要保護的性質是「凡出現在 footer 的連結，
+    都必須是可聚焦且有可感知內容的 <a href>」，而非某個特定數字。
+    """
+    soup = soup_of(client, "/")
+    footer = soup.find("footer")
+    assert footer is not None, "footer 必須存在"
+
+    footer_links = footer.find_all("a")
+    assert footer_links, "footer 至少要有一個連結"
     for link in footer_links:
         assert link.get("href"), "footer 連結必須有 href 才能被鍵盤聚焦"
+        assert link.get_text(strip=True) or link.find("img"), (
+            "footer 連結必須有可感知的內容（文字或帶 alt 的圖片）"
+        )
 
 
 def test_no_positive_tabindex(client):

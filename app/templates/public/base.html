@@ -91,8 +91,16 @@ Semantic HTML（SAI §12.1、§17）：
   <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 
+  {#
+    Favicon：管理者上傳的 logo 優先，否則使用內建的 NTUST 校徽。
+    校徽是「可信內建 asset」（SAI §16），與一般 admin 上傳不同路徑，
+    因此不受 upload allowlist 限制，也不依賴 Cloud Storage ——
+    即使 GCS 尚未設定，校徽仍會正常顯示。
+  #}
   {% if settings.logo_path %}
   <link rel="icon" href="{{ media_url(settings.logo_path) }}">
+  {% else %}
+  <link rel="icon" href="{{ url_for('static', filename='img/favicon.png') }}">
   {% endif %}
 
   {# --- JSON-LD（SAI §12.2；內容必須與可見內容一致 [S7]） --- #}
@@ -109,9 +117,24 @@ Semantic HTML（SAI §12.1、§17）：
   <header class="site-header">
     <div class="container site-header__inner">
       <a class="site-brand" href="{{ url_for('public.home') }}">
+        {#
+          校徽。管理者若上傳自訂 logo 則優先使用，
+          否則顯示內建的 NTUST 校徽（見上方 favicon 說明）。
+
+          alt 說明：校徽緊鄰的文字已經是實驗室名稱，
+          若 alt 再寫一次「NTUST SiPh Lab 標誌」，螢幕閱讀器會
+          連續念兩次相同內容。因此內建校徽的 alt 描述的是
+          「這是哪個學校」這項額外資訊，而非重複品牌名。
+        #}
         {% if settings.logo_path %}
         <img class="site-brand__logo" src="{{ media_url(settings.logo_path) }}"
-             alt="{{ settings.lab_name_zh }} 標誌" width="36" height="36">
+             alt="{{ settings.lab_name_zh }} 標誌" width="40" height="40">
+        {% else %}
+        <img class="site-brand__logo"
+             src="{{ url_for('static', filename='img/ntust-emblem-80.webp') }}"
+             srcset="{{ url_for('static', filename='img/ntust-emblem-80.webp') }} 1x,
+                     {{ url_for('static', filename='img/ntust-emblem-160.webp') }} 2x"
+             alt="國立臺灣科技大學校徽" width="40" height="40" loading="eager">
         {% endif %}
         <span class="site-brand__text">
           <span class="site-brand__zh">{{ settings.lab_name_zh }}</span>
@@ -199,17 +222,19 @@ Semantic HTML（SAI §12.1、§17）：
           {% endif %}
         </div>
 
-        <div>
-          <h2 class="site-footer__heading">網站導覽</h2>
-          <ul class="site-footer__list">
-            <li><a href="{{ url_for('public.about') }}">關於研究室</a></li>
-            <li><a href="{{ url_for('public.members') }}">研究成員</a></li>
-            <li><a href="{{ url_for('public.research_index') }}">研究成果</a></li>
-            <li><a href="{{ url_for('public.alumni') }}">畢業生</a></li>
-            <li><a href="{{ url_for('public.join') }}">加入我們</a></li>
-          </ul>
-        </div>
+        {#
+          刻意不放「網站導覽」連結列。
 
+          它原本逐項重複主導覽的六個項目，而主導覽在每一頁的頂端
+          都固定可見，且本站只有六個頁面 —— 在同一個畫面把同一組
+          連結列兩次，並不會讓任何人更快找到東西。
+
+          移除後每頁少 5 個重複連結，招募入口也回歸「只有主導覽
+          一處」（使用者明確要求）。footer 只保留「這裡是誰」與
+          「怎麼聯絡」這兩件主導覽沒有提供的資訊。
+
+          若未來頁面數量成長到主導覽放不下，再重新評估。
+        #}
         <div>
           <h2 class="site-footer__heading">聯絡與連結</h2>
           <ul class="site-footer__list">

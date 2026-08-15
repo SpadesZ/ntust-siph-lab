@@ -387,9 +387,11 @@ main {
   color: var(--color-photon-bright);
 }
 
+/* 校徽。40px 是圓形細筆畫校徽仍能辨識的下限；
+   再小會糊成一個藍點，失去識別意義。 */
 .site-brand__logo {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
   flex-shrink: 0;
 }
@@ -898,6 +900,38 @@ main {
   font-size: var(--text-sm);
   color: var(--color-ink-soft);
   margin: 0;
+}
+
+/* 首頁的研究主題「精簡版」。
+   /about 使用上方 .focus-item 顯示完整說明；首頁只列主題名稱，
+   讓訪客一眼掃完六個方向，不必讀兩次相同內容。
+   採自動換行的多欄流排，320px 下自然變成單欄。 */
+.focus-chip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-8);
+}
+
+.focus-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-md);
+  color: var(--color-ink);
+  /* 讓每一項至少佔一個可讀寬度，避免長短項目交錯造成鋸齒感 */
+  min-width: 15rem;
+  flex: 1 1 15rem;
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--color-line);
+}
+
+/* chip 內的微環標記不需要 .focus-item 的頂部偏移（該偏移是為了
+   對齊多行標題的第一行；chip 只有單行，垂直置中即可）。 */
+.focus-chip .ring-marker {
+  margin-top: 0;
 }
 
 /* ---------- 空狀態 ---------- */
