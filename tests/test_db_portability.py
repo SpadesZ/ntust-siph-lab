@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 from pathlib import Path
@@ -50,6 +51,81 @@ def python_sources(*subdirs: str) -> list[Path]:
     for subdir in subdirs:
         files.extend((APP_DIR / subdir).rglob("*.py"))
     return files
+
+
+# ----------------------------------------------------------------------
+# AST 工具：只檢查「真正的程式碼」
+# ----------------------------------------------------------------------
+# 為什麼不用字串比對：
+#   本檔的守門測試曾以 `if "PRAGMA" in content.upper()` 掃描原始碼，
+#   結果把 coverage 指令 `# pragma: no cover` 全部誤判為違規，
+#   讓交付狀態的測試套件長期是紅的（違反 SAI §21.1 G1）。
+#   同理，`datetime.utcnow()` 的檢查也誤判了 mixins.py docstring 中
+#   「為什麼不用 datetime.utcnow()」這句說明文字。
+#
+#   守門測試若會對「註解與說明文字」誤報，開發者就會學會忽略它，
+#   那它就失去存在意義。因此改以 AST 解析：
+#   註解在 AST 中根本不存在，docstring 可精確識別並排除。
+
+
+def _docstring_constant_ids(tree: ast.AST) -> set[int]:
+    """找出所有屬於 docstring 的 Constant 節點。
+
+    docstring 是 Module / FunctionDef / AsyncFunctionDef / ClassDef
+    body 的第一個 Expr 且值為 str。這些是說明文字，不是可執行內容。
+    """
+    ids: set[int] = set()
+    holders = (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+    for node in ast.walk(tree):
+        if not isinstance(node, holders):
+            continue
+        body = getattr(node, "body", None)
+        if not body:
+            continue
+        first = body[0]
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            ids.add(id(first.value))
+    return ids
+
+
+def code_string_literals(path: Path) -> list[tuple[int, str]]:
+    """回傳檔案中所有「非 docstring」的字串常值 (行號, 內容)。
+
+    這些才是可能被送進資料庫的 SQL 片段；註解與 docstring 不會出現。
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    docstrings = _docstring_constant_ids(tree)
+    found: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and id(node) not in docstrings
+        ):
+            found.append((node.lineno, node.value))
+    return found
+
+
+def attribute_calls(path: Path, attr_name: str) -> list[int]:
+    """回傳所有 `<something>.<attr_name>()` 呼叫的行號。
+
+    以 AST 比對呼叫結構，而非字串搜尋，因此不會被
+    註解、docstring 或字串中提到的同名文字影響。
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    lines: list[int] = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == attr_name
+        ):
+            lines.append(node.lineno)
+    return lines
 
 
 # ----------------------------------------------------------------------
@@ -98,17 +174,21 @@ def test_health_service_raw_sql_is_only_select_one():
 # 契約 2：SQLite-only 技巧必須隔離
 # ----------------------------------------------------------------------
 def test_no_pragma_outside_local_adapter():
-    """SAI §10.2：PRAGMA 只能出現在 local adapter（extensions.py）。"""
+    """SAI §10.2：PRAGMA 只能出現在 local adapter（extensions.py）。
+
+    只檢查實際的字串常值（見 code_string_literals 的說明）：
+    `# pragma: no cover` 是 coverage 指令，不是 SQLite PRAGMA。
+    """
     offenders: list[str] = []
 
     for path in python_sources("blueprints", "services", "repositories", "models", "storage"):
-        content = path.read_text(encoding="utf-8")
-        if "PRAGMA" in content.upper():
-            offenders.append(str(path.relative_to(PROJECT_ROOT)))
+        for line_no, literal in code_string_literals(path):
+            if "PRAGMA" in literal.upper():
+                offenders.append(f"{path.relative_to(PROJECT_ROOT)}:{line_no} -> {literal[:60]!r}")
 
     assert not offenders, (
         "PRAGMA 只允許出現在 app/extensions.py 的連線事件中，"
-        f"以下檔案違反此規則：{offenders}"
+        "以下位置違反此規則：\n  " + "\n  ".join(offenders)
     )
 
 
@@ -117,17 +197,70 @@ def test_no_pragma_outside_local_adapter():
     ["strftime(", "julianday(", "group_concat(", "datetime('now'", "sqlite_version("],
 )
 def test_no_sqlite_only_functions(sqlite_only_function):
-    """禁止使用 SQLite 專屬函式（PostgreSQL 沒有相同語意）。"""
+    """禁止使用 SQLite 專屬函式（PostgreSQL 沒有相同語意）。
+
+    同樣只掃描字串常值：說明文件中提到函式名稱是合理的。
+    """
     offenders: list[str] = []
 
     for path in python_sources("blueprints", "services", "repositories", "models"):
-        content = path.read_text(encoding="utf-8")
-        if sqlite_only_function in content:
-            offenders.append(str(path.relative_to(PROJECT_ROOT)))
+        for line_no, literal in code_string_literals(path):
+            if sqlite_only_function in literal:
+                offenders.append(f"{path.relative_to(PROJECT_ROOT)}:{line_no}")
 
     assert not offenders, (
         f"使用了 SQLite 專屬函式 {sqlite_only_function}：{offenders}"
     )
+
+
+# ----------------------------------------------------------------------
+# 反向測試：證明守門測試「真的會抓到」違規
+# ----------------------------------------------------------------------
+# 為什麼需要這些：
+#   守門測試最危險的失效方式，是被改成「永遠通過」。
+#   上面兩個測試曾因誤判而長期失敗，修正時很容易矯枉過正
+#   改成什麼都抓不到。以下測試對「已知違規的樣本程式碼」
+#   斷言偵測器會回報，確保修正沒有把守門功能一併拿掉。
+
+
+def _write(tmp_path, name: str, source: str) -> Path:
+    path = tmp_path / name
+    path.write_text(source, encoding="utf-8")
+    return path
+
+
+def test_pragma_detector_catches_real_violation(tmp_path):
+    """真正的 PRAGMA 字串必須被 code_string_literals 偵測到。"""
+    path = _write(tmp_path, "bad_pragma.py", 'conn.execute("PRAGMA journal_mode=WAL")\n')
+    literals = [lit for _, lit in code_string_literals(path)]
+    assert any("PRAGMA" in lit.upper() for lit in literals)
+
+
+def test_pragma_detector_ignores_coverage_directive(tmp_path):
+    """`# pragma: no cover` 不得被當成 SQLite PRAGMA。"""
+    path = _write(
+        tmp_path,
+        "ok_pragma.py",
+        'def f():  # pragma: no cover\n    """說明中提到 PRAGMA 也不算違規。"""\n    return 1\n',
+    )
+    literals = [lit for _, lit in code_string_literals(path)]
+    assert not any("PRAGMA" in lit.upper() for lit in literals)
+
+
+def test_utcnow_detector_catches_real_violation(tmp_path):
+    """真正的 datetime.utcnow() 呼叫必須被偵測到。"""
+    path = _write(tmp_path, "bad_utcnow.py", "import datetime\nx = datetime.datetime.utcnow()\n")
+    assert attribute_calls(path, "utcnow")
+
+
+def test_utcnow_detector_ignores_docstring_mention(tmp_path):
+    """docstring 中提到 datetime.utcnow() 不得被判為違規。"""
+    path = _write(
+        tmp_path,
+        "ok_utcnow.py",
+        'def utc():\n    """為什麼不用 datetime.utcnow()：它回傳 naive datetime。"""\n    return 1\n',
+    )
+    assert not attribute_calls(path, "utcnow")
 
 
 def test_no_hardcoded_local_paths_in_application_code():
@@ -200,20 +333,20 @@ def test_no_native_enum_in_migrations():
 # 契約 4：UTC 時間
 # ----------------------------------------------------------------------
 def test_no_naive_utcnow_usage():
-    """禁止使用 datetime.utcnow()（naive，會造成時區比較錯誤）。"""
+    """禁止使用 datetime.utcnow()（naive，會造成時區比較錯誤）。
+
+    以 AST 比對呼叫結構，因此 docstring 中「為什麼不用
+    datetime.utcnow()」這類說明文字不會被誤判為違規。
+    """
     offenders: list[str] = []
 
     for path in APP_DIR.rglob("*.py"):
-        content = path.read_text(encoding="utf-8")
-        code = "\n".join(
-            line for line in content.splitlines() if not line.lstrip().startswith("#")
-        )
-        if "datetime.utcnow()" in code:
-            offenders.append(str(path.relative_to(PROJECT_ROOT)))
+        for line_no in attribute_calls(path, "utcnow"):
+            offenders.append(f"{path.relative_to(PROJECT_ROOT)}:{line_no}")
 
     assert not offenders, (
         "請使用 app.models.mixins.utcnow()（timezone-aware）取代 "
-        f"datetime.utcnow()：{offenders}"
+        "datetime.utcnow()：\n  " + "\n  ".join(offenders)
     )
 
 
