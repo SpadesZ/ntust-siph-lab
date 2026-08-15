@@ -591,20 +591,29 @@ main {
 
 /* Hero 背景的細線幾何（晶片佈局感）。
    使用 repeating-linear-gradient，成本極低且不需要圖檔。
-   刻意保持低對比，作為弱背景而非主角（§6.1 圖片規則）。 */
+
+   設計修訂（2026-08-15）：
+     原實作是深藍底 + 青色發光格線。雖然符合 §6.2 的色票，
+     但實際呈現出來是「科技新創 / AI SaaS」的視覺語彙，
+     與 §6.1 想要的「研究刊物而非 SaaS landing page」相反，
+     也正是 §6.3 禁止清單想避免的方向。
+
+     改為淺色紙感底 + 極淡的中性方格（類似方格紙／量測紙），
+     並把青色降級為單一焦點色。方格改用中性灰而非青色，
+     移除發光感；對比降到僅在近看時可辨識的程度。 */
 .hero-grid-backdrop {
   position: absolute;
   inset: 0;
   background-image:
     repeating-linear-gradient(
       90deg,
-      rgba(46, 214, 214, 0.07) 0 1px,
-      transparent 1px 72px
+      rgba(16, 35, 61, 0.045) 0 1px,
+      transparent 1px 88px
     ),
     repeating-linear-gradient(
       0deg,
-      rgba(46, 214, 214, 0.05) 0 1px,
-      transparent 1px 72px
+      rgba(16, 35, 61, 0.035) 0 1px,
+      transparent 1px 88px
     );
   pointer-events: none;
 }
@@ -613,13 +622,23 @@ main {
  * 6. 內容元件
  * ============================================================ */
 
-/* ---------- Hero（SAI §5.1：Hero 必須是 Lab 的論點）---------- */
+/* ---------- Hero（SAI §5.1：Hero 必須是 Lab 的論點）----------
+
+   採淺色編輯式版面而非深色滿版底：
+     深藍滿版 + 發光格線在瀏覽時的第一印象是「科技產品首頁」，
+     而本站的訪客（潛在研究生、學術合作方）期待的是研究單位。
+     淺底 + 大留白 + 清楚的資料標籤更接近學術刊物與各校
+     研究成果頁的慣例，長文可讀性也較好（§6.1 排版原則）。
+
+   深藍仍是品牌主色，改用於標題、footer 與 section--navy，
+   而不是整片背景 —— 少量高對比比大面積著色更有辨識度。 */
 .hero {
   position: relative;
-  background: var(--color-navy);
-  color: var(--color-surface);
+  background: var(--color-surface);
+  color: var(--color-ink);
   padding-block: var(--space-20);
   overflow: hidden;
+  border-bottom: 1px solid var(--color-line);
 }
 
 .hero__inner {
@@ -630,24 +649,27 @@ main {
   align-items: center;
 }
 
+/* eyebrow 改為中性灰：原本的亮青色在淺底上對比不足，
+   且「發光小字」正是要避免的 SaaS 語彙。
+   這裡承載的是學校/系所名稱，屬於脈絡資訊而非強調重點。 */
 .hero__eyebrow {
   font-size: var(--text-xs);
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
-  color: var(--color-photon-bright);
+  color: var(--color-ink-soft);
   margin-bottom: var(--space-4);
 }
 
 .hero__title {
   font-size: var(--text-3xl);
-  color: var(--color-surface);
+  color: var(--color-navy);
   margin-bottom: var(--space-5);
   max-width: 18ch;
 }
 
 .hero__intro {
   font-size: var(--text-md);
-  color: #cfdeeb;
+  color: var(--color-ink);
   max-width: var(--measure-narrow);
   margin-bottom: var(--space-8);
 }
@@ -1227,15 +1249,15 @@ main {
   color: var(--color-ink);
 }
 
-/* 深底上的次要按鈕 */
-.section--navy .btn--secondary,
-.hero .btn--secondary {
+/* 深底上的次要按鈕。
+   注意：.hero 已改為淺底（見 .hero 的說明），因此「不」列在這裡 ——
+   白字白底會完全看不見。此規則只適用仍為深色的 section--navy。 */
+.section--navy .btn--secondary {
   color: var(--color-surface);
   border-color: rgba(255, 255, 255, 0.35);
 }
 
-.section--navy .btn--secondary:hover,
-.hero .btn--secondary:hover {
+.section--navy .btn--secondary:hover {
   border-color: var(--color-photon-bright);
   color: var(--color-photon-bright);
 }

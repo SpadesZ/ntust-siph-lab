@@ -70,10 +70,11 @@ Legacy 對照（SAI §22.3 Old -> New Mapping）：
         {% if settings.department_en %}<br><em>{{ settings.department_en }}</em>{% endif %}
       </dd>
       {% endif %}
-      {% if settings.contact_email %}
-      <dt>聯絡 Email</dt>
-      <dd><a href="mailto:{{ settings.contact_email }}">{{ settings.contact_email }}</a></dd>
-      {% endif %}
+      {#
+        聯絡 Email 刻意不放在這裡：它已經出現在下方教授資料、
+        footer 與 /join。同一頁重複兩次沒有幫助，
+        且四處維護容易不一致（見 home.html 末的 IA 去重說明）。
+      #}
     </dl>
   </header>
 
@@ -106,6 +107,18 @@ Legacy 對照（SAI §22.3 Old -> New Mapping）：
         </h3>
         {% if faculty.name_en %}
         <p class="person-hero__role">{{ faculty.name_en }}</p>
+        {% endif %}
+
+        {#
+          教授簡介。母站只提供姓名/職稱/學歷/專長，沒有敘述性介紹，
+          因此這裡沒有預設內容 —— 依 SAI §2.3 不得由系統代筆。
+          管理者於後台「研究成員 → 楊淳良 → 簡介」填寫後即會顯示。
+          留空時整段不出現，不會產生空白區塊。
+        #}
+        {% if faculty.bio_zh %}
+        <div class="prose prose--preserve" style="margin-bottom: var(--space-6);">
+          {{ faculty.bio_zh }}
+        </div>
         {% endif %}
 
         <dl class="meta-list">
@@ -206,10 +219,14 @@ Legacy 對照（SAI §22.3 Old -> New Mapping）：
   </section>
   {% endif %}
 
+  {#
+    延伸瀏覽。CTA 文案與主導覽一致使用「加入我們」——
+    同一個目的地在站內出現兩種名稱會讓使用者以為是不同頁面。
+  #}
   <nav class="next-steps" aria-label="延伸瀏覽">
     <a class="btn btn--secondary" href="{{ url_for('public.members') }}">研究成員</a>
     <a class="btn btn--secondary" href="{{ url_for('public.research_index') }}">研究成果</a>
-    <a class="btn btn--primary" href="{{ url_for('public.join') }}">加入研究室</a>
+    <a class="btn btn--primary" href="{{ url_for('public.join') }}">加入我們</a>
   </nav>
 
 </div>

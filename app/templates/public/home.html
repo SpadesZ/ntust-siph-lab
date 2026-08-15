@@ -75,12 +75,17 @@ Hero 規則（SAI §5.1 + §6.1）：
       <p class="hero__intro">{{ settings.hero_intro_zh }}</p>
       {% endif %}
 
+      {#
+        Hero CTA 指向「內容」而非「招募」。
+        招募入口固定在主導覽的「加入我們」，首頁不再重複 ——
+        見本檔末的 IA 去重說明。
+      #}
       <div class="hero__actions">
         <a class="btn btn--primary" href="{{ url_for('public.research_index') }}">
           瀏覽研究成果
         </a>
-        <a class="btn btn--secondary" href="{{ url_for('public.join') }}">
-          加入研究室
+        <a class="btn btn--secondary" href="{{ url_for('public.members') }}">
+          認識研究團隊
         </a>
       </div>
     </div>
@@ -256,41 +261,27 @@ Hero 規則（SAI §5.1 + §6.1）：
 </section>
 {% endif %}
 
-{# ---------- 07 Join / Contact（SAI §5.1：明確下一步） ---------- #}
-<section class="section" aria-labelledby="join-heading">
-  <div class="container split-panel">
-    <div>
-      <span class="section-label">Join Us</span>
-      <h2 class="trace-underline" id="join-heading">
-        {{ settings.join_title_zh or '加入研究室' }}
-      </h2>
-    </div>
-    <div class="prose">
-      {% if settings.join_body_zh %}
-      <p>{{ settings.join_body_zh }}</p>
-      {% endif %}
+{#
+  ---------- IA 去重說明（原 07 Join / Contact section） ----------
 
-      <dl class="meta-list">
-        {% if settings.contact_email %}
-        <dt>Email</dt>
-        <dd><a href="mailto:{{ settings.contact_email }}">{{ settings.contact_email }}</a></dd>
-        {% endif %}
-        {% if settings.address_zh %}
-        <dt>位置</dt>
-        <dd>
-          {{ settings.address_zh }}
-          {% if settings.map_url %}
-          <br><a href="{{ settings.map_url }}" rel="noopener">在地圖上開啟</a>
-          {% endif %}
-        </dd>
-        {% endif %}
-      </dl>
+  SAI §5.1 建議首頁最後放 Join / Contact。本專案刻意「不」放，
+  原因是實測後發現同一組資訊在站內重複四次：
 
-      <p style="margin-top: var(--space-6);">
-        <a class="btn btn--primary" href="{{ url_for('public.join') }}">查看招募說明</a>
-      </p>
-    </div>
-  </div>
-</section>
+    聯絡 Email → 首頁 §07、footer、/join、/about
+    招募文案   → 首頁 §07、/join
+    「加入研究室」標題 → 首頁 §07、/join、主導覽
+
+  重複並沒有讓資訊更容易找到，反而稀釋了首頁的重點，
+  也讓維護者必須記得同時更新多處。
+
+  現行做法（單一主場原則）：
+    招募與聯絡的「主場」是 /join，入口固定在主導覽的「加入我們」。
+    footer 保留 Email（是網站慣例，使用者預期在此找到）。
+    首頁專注於「這個研究室做什麼、有哪些人與成果」。
+
+  §5.1 的「明確下一步」由各 section 的 section-link
+  （全部成果 → / 全部成員 → / 依年度瀏覽 →）與主導覽承擔，
+  不存在無下一步的死路。
+#}
 
 {% endblock %}
