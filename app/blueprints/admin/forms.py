@@ -98,9 +98,74 @@ from wtforms import (
     SubmitField,
     TextAreaField,
 )
-from wtforms.validators import DataRequired, EqualTo, Length, NumberRange, Optional
+from wtforms.validators import DataRequired, EqualTo, Length, NumberRange, Optional, ValidationError
 
 from app.models.mixins import ContributorRole, OutputType, PersonStatus, PublishStatus
+from app.models.research_output import ResearchOutput
+from app.utils.validators import is_valid_email, is_valid_url
+
+
+class SafeUrl:
+    """URL 格式與 scheme 驗證（SAI §15.1 Links、§15.2 Publication）。
+
+    為什麼需要自訂 validator 而不用 wtforms.validators.URL：
+      1. wtforms 的 URL validator 不限制 scheme，`javascript:alert(1)`
+         會通過 —— 那個值若被寫入 href，點擊即觸發 XSS。
+      2. 本專案允許管理者直接貼裸網域（"example.com"），
+         wtforms 的 URL validator 會拒絕。
+
+    為什麼「表單層」也要驗證（service 層已經會正規化）：
+      service 的 normalize_url 對非法值回傳 None，也就是把輸入
+      靜默丟棄。管理者貼錯連結後只會發現欄位變空白，
+      沒有任何錯誤訊息，也不知道自己貼錯了。
+      SAI §15.1 要求「格式檢查」，指的正是這種使用者可見的回饋。
+    """
+
+    def __init__(self, message: str | None = None) -> None:
+        self.message = message or "請輸入有效的網址（僅接受 http/https）。"
+
+    def __call__(self, form, field) -> None:
+        if not field.data:
+            return
+        if not is_valid_url(field.data):
+            raise ValidationError(self.message)
+
+
+class SafeEmail:
+    """Email 格式驗證（SAI §15.1）。
+
+    不使用 wtforms.validators.Email：它需要額外的 email_validator
+    相依，且對本案的需求（單純格式檢查）過重。
+    與 app.utils.validators.is_valid_email 共用同一套規則，
+    確保表單層與 service 層判斷一致。
+    """
+
+    def __init__(self, message: str | None = None) -> None:
+        self.message = message or "Email 格式不正確。"
+
+    def __call__(self, form, field) -> None:
+        if not field.data:
+            return
+        if not is_valid_email(field.data):
+            raise ValidationError(self.message)
+
+
+class NormalisableDoi:
+    """DOI 必須可被正規化為裸 DOI（SAI §15.2「DOI 格式 normalization」）。
+
+    接受多種輸入形式（裸值、doi: 前綴、https://doi.org/ 完整 URL），
+    但無法解析出 10.xxxx/yyyy 結構時回報錯誤 ——
+    否則錯誤的 DOI 會靜默變成 None，管理者以為已填寫。
+    """
+
+    def __init__(self, message: str | None = None) -> None:
+        self.message = message or "DOI 格式不正確（應為 10.xxxx/yyyy 形式）。"
+
+    def __call__(self, form, field) -> None:
+        if not field.data:
+            return
+        if ResearchOutput.normalize_doi(field.data) is None:
+            raise ValidationError(self.message)
 
 #: 上傳允許的副檔名。與 config.ALLOWED_IMAGE_EXTENSIONS 一致；
 #: 在此重複宣告是因為 FileAllowed 需要在 class 定義時取值，
@@ -182,12 +247,18 @@ class PersonForm(FlaskForm):
     )
 
     # --- Links ---
-    email_public = StringField("公開 Email", validators=[Optional(), Length(max=200)])
-    orcid_url = StringField("ORCID", validators=[Optional(), Length(max=255)])
-    scholar_url = StringField("Google Scholar", validators=[Optional(), Length(max=255)])
-    github_url = StringField("GitHub", validators=[Optional(), Length(max=255)])
-    linkedin_url = StringField("LinkedIn", validators=[Optional(), Length(max=255)])
-    external_url = StringField("其他外部連結", validators=[Optional(), Length(max=500)])
+    email_public = StringField(
+        "公開 Email", validators=[Optional(), Length(max=200), SafeEmail()]
+    )
+    orcid_url = StringField("ORCID", validators=[Optional(), Length(max=255), SafeUrl()])
+    scholar_url = StringField(
+        "Google Scholar", validators=[Optional(), Length(max=255), SafeUrl()]
+    )
+    github_url = StringField("GitHub", validators=[Optional(), Length(max=255), SafeUrl()])
+    linkedin_url = StringField("LinkedIn", validators=[Optional(), Length(max=255), SafeUrl()])
+    external_url = StringField(
+        "其他外部連結", validators=[Optional(), Length(max=500), SafeUrl()]
+    )
     external_url_label = StringField(
         "外部連結顯示名稱", validators=[Optional(), Length(max=120)]
     )
@@ -355,12 +426,18 @@ class ResearchForm(FlaskForm):
     venue = StringField("期刊／會議／平台", validators=[Optional(), Length(max=255)])
     doi = StringField(
         "DOI",
-        validators=[Optional(), Length(max=255)],
+        validators=[Optional(), Length(max=255), NormalisableDoi()],
         description="可貼裸值或完整網址，系統會自動正規化。",
     )
-    external_url = StringField("出版社／專案頁", validators=[Optional(), Length(max=500)])
-    github_url = StringField("程式碼 Repository", validators=[Optional(), Length(max=500)])
-    dataset_url = StringField("資料集連結", validators=[Optional(), Length(max=500)])
+    external_url = StringField(
+        "出版社／專案頁", validators=[Optional(), Length(max=500), SafeUrl()]
+    )
+    github_url = StringField(
+        "程式碼 Repository", validators=[Optional(), Length(max=500), SafeUrl()]
+    )
+    dataset_url = StringField(
+        "資料集連結", validators=[Optional(), Length(max=500), SafeUrl()]
+    )
     authors_display_text = TextAreaField(
         "完整作者列",
         validators=[Optional()],

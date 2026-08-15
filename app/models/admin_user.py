@@ -2,7 +2,7 @@
 # NTUST SiPh Lab - AdminUser Model
 #
 # 上下游：
-#   scripts/create_admin.py / flask admin create -> AdminUser -> DB
+#   flask admin create / reset-password（app/cli.py）-> AdminUser -> DB
 #   blueprints/auth/routes.py -> AdminUser.verify_password() -> session
 #   extensions._load_admin_user() -> AdminUser -> current_user
 #   AdminUser -> AuditLog.admin_user_id
