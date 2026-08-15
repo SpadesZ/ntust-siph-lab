@@ -54,6 +54,7 @@ from tests.conftest import TEST_ADMIN_PASSWORD, TEST_ADMIN_USERNAME
         "/admin/password",
     ],
 )
+@pytest.mark.acceptance
 def test_ac01_unauthenticated_admin_redirects_to_login(client, path):
     """AC-01：未登入進 /admin/* 一律 302 導向 /admin/login。
 
@@ -70,6 +71,7 @@ def test_ac01_unauthenticated_admin_redirects_to_login(client, path):
     )
 
 
+@pytest.mark.acceptance
 def test_ac01_login_page_is_publicly_accessible(client):
     """登入頁本身必須可匿名存取，否則沒有人能登入。"""
     response = client.get("/admin/login")
@@ -79,6 +81,7 @@ def test_ac01_login_page_is_publicly_accessible(client):
 # ----------------------------------------------------------------------
 # AC-03：正確帳密可登入
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac03_valid_credentials_grant_access(client, admin_user):
     """AC-03：正確帳密登入後 /admin 可見。"""
     response = client.post(
@@ -93,6 +96,7 @@ def test_ac03_valid_credentials_grant_access(client, admin_user):
     assert "Dashboard" in dashboard.get_data(as_text=True)
 
 
+@pytest.mark.acceptance
 def test_ac03_username_is_case_insensitive(client, admin_user):
     """帳號正規化：大小寫不同仍可登入（SAI §8.2 normalized）。"""
     response = client.post(
@@ -112,6 +116,7 @@ def test_authenticated_user_visiting_login_is_redirected(logged_in_client):
 # ----------------------------------------------------------------------
 # AC-02：錯誤密碼不建立 session
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac02_wrong_password_creates_no_session(client, admin_user):
     """AC-02：錯密碼不建立 session。"""
     response = client.post(
@@ -128,6 +133,7 @@ def test_ac02_wrong_password_creates_no_session(client, admin_user):
     assert "/admin/login" in dashboard.headers["Location"]
 
 
+@pytest.mark.acceptance
 def test_ac02_unknown_user_and_wrong_password_are_indistinguishable(client, admin_user):
     """帳號不存在與密碼錯誤必須回應完全相同。
 
@@ -172,6 +178,7 @@ def test_ac02_unknown_user_and_wrong_password_are_indistinguishable(client, admi
         assert "查無" not in message
 
 
+@pytest.mark.acceptance
 def test_ac02_failed_login_writes_audit_log(app, client, admin_user):
     """登入失敗必須留下稽核紀錄（SAI §11.2「audit」）。"""
     from sqlalchemy import select
@@ -218,6 +225,7 @@ def test_successful_login_writes_audit_log(app, client, admin_user):
             assert entries[0].ip_hash != "127.0.0.1"
 
 
+@pytest.mark.acceptance
 def test_ac02_rate_limit_blocks_repeated_failures(limiter_app):
     """AC-02：連續錯誤觸發 rate limit（429）。
 
@@ -363,6 +371,7 @@ def test_inactive_account_cannot_log_in(app, client):
 # ----------------------------------------------------------------------
 # AC-16：鍵盤可完成登入（以表單結構驗證）
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac16_login_form_is_keyboard_accessible(client):
     """AC-16：登入表單具備鍵盤操作所需的結構。
 

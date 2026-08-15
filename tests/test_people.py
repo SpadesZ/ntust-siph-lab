@@ -34,6 +34,7 @@ import pytest
 # ----------------------------------------------------------------------
 # AC-04：新增並發布成員後出現在 /members
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac04_published_member_appears_on_members_page(client, sample_person):
     """AC-04：發布後的在學成員出現在 /members。"""
     response = client.get("/members")
@@ -44,6 +45,7 @@ def test_ac04_published_member_appears_on_members_page(client, sample_person):
     assert f'/people/{sample_person["slug"]}' in html
 
 
+@pytest.mark.acceptance
 def test_ac04_admin_can_create_and_publish_member(app, logged_in_client):
     """AC-04 的後台路徑：透過 Admin 表單新增並發布。"""
     from app.models.mixins import PublishStatus
@@ -114,6 +116,7 @@ def test_archived_person_is_not_public(app, client, sample_person):
 # ----------------------------------------------------------------------
 # AC-06：在學轉畢業（ADR-008 的核心保證）
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac06_graduate_preserves_id_and_slug(app, client, sample_person):
     """AC-06：轉為畢業生後 person id 與 slug 完全不變。"""
     from app.extensions import db
@@ -134,6 +137,7 @@ def test_ac06_graduate_preserves_id_and_slug(app, client, sample_person):
         assert person.graduation_year == 2026
 
 
+@pytest.mark.acceptance
 def test_ac06_graduate_moves_person_between_pages(app, client, sample_person):
     """AC-06：/members 消失、/alumni 出現，個人 URL 仍可用。"""
     from app.extensions import db
@@ -156,6 +160,7 @@ def test_ac06_graduate_moves_person_between_pages(app, client, sample_person):
     assert client.get(f"/people/{sample_person['slug']}").status_code == 200
 
 
+@pytest.mark.acceptance
 def test_ac06_graduate_preserves_research_output_links(app, sample_person, sample_output):
     """AC-06 / ADR-008：畢業後既有研究成果關聯完全保留。
 
@@ -221,6 +226,7 @@ def test_graduate_writes_audit_log(app, sample_person):
 # ----------------------------------------------------------------------
 # AC-12：有圖無 alt 阻擋發布
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac12_photo_without_alt_blocks_publish(app, png_bytes):
     """AC-12：有照片但缺 alt 時，publish validator 阻擋發布。"""
     import io
@@ -254,6 +260,7 @@ def test_ac12_photo_without_alt_blocks_publish(app, png_bytes):
             PersonService.publish(person)
 
 
+@pytest.mark.acceptance
 def test_ac12_photo_with_alt_allows_publish(app, png_bytes):
     """補上 alt 之後即可發布。"""
     import io

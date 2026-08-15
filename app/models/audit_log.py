@@ -40,8 +40,9 @@
 #   sqlalchemy, hashlib, app.extensions.db
 #
 # 環境變數：
-#   AUDIT_IP_SALT（選用）。未設定時使用固定字串，
-#   雜湊仍不可逆，但跨部署不可比對 —— 這是刻意的隱私預設。
+#   AUDIT_IP_SALT（選用）。未設定時「完全不記錄 IP」（存 null）。
+#   設定時必須是高熵值，並由 Secret Manager 提供。
+#   詳細理由見 _IP_SALT 常數的說明。
 #
 # 資料庫使用方式：
 #   audit_logs table。admin_user_id 為 FK 但使用 ON DELETE SET NULL，
@@ -53,9 +54,13 @@
 #
 # 特殊機制（隱私）：
 #   SAI §8.8 指出「依隱私政策決定是否保存完整 IP；v1 可只留必要
-#   資訊」。本實作預設只存 SHA-256 雜湊前 32 字元：
-#     - 仍可判斷「是否為同一來源的連續失敗」（brute force 分析）
-#     - 但無法還原真實 IP，降低個資保存風險
+#   資訊」。本實作分兩種模式：
+#     - 未提供 AUDIT_IP_SALT（預設）：完全不記錄 IP，欄位存 null
+#     - 提供高熵 salt：存 SHA-256 雜湊前 32 字元，
+#       仍可判斷「是否為同一來源的連續失敗」（brute force 分析），
+#       但無法還原真實 IP
+#   不提供「固定預設 salt」這個選項，因為那會產生可被完整反查、
+#   卻讓人誤以為安全的假去識別化。
 #
 # 已知限制與禁止事項：
 #   1. 本表只增不改；禁止提供 UI 讓管理員編輯或刪除稽核紀錄。
@@ -88,9 +93,19 @@ from app.models.mixins import UtcDateTime, utcnow
 #: summary 欄位的最大長度；超過則截斷。
 _SUMMARY_MAX = 500
 
-#: IP 雜湊使用的 salt。未設定環境變數時使用固定值 ——
-#: 雜湊仍不可逆，只是失去跨部署可比對性，對隱私而言是更安全的預設。
-_IP_SALT = os.environ.get("AUDIT_IP_SALT", "siph-lab-audit-v1")
+#: IP 雜湊使用的 salt。未設定時為 None，此時「完全不記錄 IP」。
+#:
+#: 為什麼不給預設值：
+#:   原本的實作使用固定字串 "siph-lab-audit-v1" 作為預設 salt。
+#:   由於這個值就寫在公開的原始碼中，而 IPv4 位址空間只有 2^32，
+#:   任何取得資料庫的人都能在數分鐘內窮舉全部位址、比對雜湊，
+#:   完整還原每一筆原始 IP —— 也就是說那層雜湊實際上不提供任何保護，
+#:   卻讓人誤以為個資已經去識別化。
+#:
+#:   SAI §8.8 允許「v1 可只留必要資訊」，因此更誠實的預設是
+#:   「沒有高熵 salt 就不要記錄 IP」，而不是記錄一個假裝安全的雜湊。
+#:   正式環境請由 Secret Manager 提供高熵值（見 deploy/service.yaml）。
+_IP_SALT = os.environ.get("AUDIT_IP_SALT") or None
 
 
 class AuditLog(db.Model):
@@ -142,14 +157,19 @@ class AuditLog(db.Model):
     # ------------------------------------------------------------------
     @staticmethod
     def hash_ip(ip_address: str | None) -> str | None:
-        """把 IP 雜湊成不可逆字串。
+        """把 IP 雜湊成不可逆字串；未設定 salt 時回傳 None。
+
+        為什麼沒有 salt 就回 None 而不是用預設 salt：
+          見 _IP_SALT 的說明 —— IPv4 空間只有 2^32，salt 一旦可預測，
+          雜湊就能被完整反查。回傳 None（不記錄）比記錄一個
+          「看起來去識別化、實際上可還原」的值誠實且安全。
 
         為什麼截斷到 32 字元：
           完整 SHA-256 為 64 字元。前 32 字元（128 bit）對「判斷是否
           為同一來源」已遠超過需求，且縮短欄位可降低儲存量。
           碰撞機率在本案的資料量級可忽略。
         """
-        if not ip_address:
+        if not ip_address or not _IP_SALT:
             return None
         digest = hashlib.sha256(f"{_IP_SALT}:{ip_address}".encode("utf-8")).hexdigest()
         return digest[:32]

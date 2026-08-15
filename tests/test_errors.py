@@ -70,6 +70,7 @@ def test_missing_research_returns_404_not_500(client):
 # ----------------------------------------------------------------------
 # AC-19：500 不顯示 stack trace
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac19_500_page_hides_stack_trace(app):
     """AC-19：500 頁不得顯示 stack trace。
 
@@ -97,6 +98,7 @@ def test_ac19_500_page_hides_stack_trace(app):
     assert 'href="/"' in html
 
 
+@pytest.mark.acceptance
 def test_ac19_500_rolls_back_session(app):
     """500 處理必須 rollback，避免後續請求連鎖失敗。"""
     from app.extensions import db

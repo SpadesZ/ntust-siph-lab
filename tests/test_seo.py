@@ -141,6 +141,7 @@ def test_descriptions_are_not_all_identical(client):
 
 
 @pytest.mark.parametrize("path", PUBLIC_PAGES)
+@pytest.mark.acceptance
 def test_ac18_single_h1_per_page(client, path):
     """AC-18：每頁 H1 唯一。"""
     meta = parse_meta(client.get(path).get_data(as_text=True))
@@ -149,6 +150,7 @@ def test_ac18_single_h1_per_page(client, path):
     )
 
 
+@pytest.mark.acceptance
 def test_ac18_detail_pages_have_single_h1(client, sample_person, sample_output):
     """AC-18：詳細頁同樣只有一個 h1。"""
     for path in (f"/people/{sample_person['slug']}", f"/research/{sample_output['slug']}"):
@@ -159,6 +161,7 @@ def test_ac18_detail_pages_have_single_h1(client, sample_person, sample_output):
 # ----------------------------------------------------------------------
 # AC-05：人物頁 metadata 與 Person JSON-LD
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac05_person_page_metadata_and_jsonld(client, sample_person):
     """AC-05：人物頁具備 canonical、title、description 與 Person JSON-LD。"""
     html = client.get(f"/people/{sample_person['slug']}").get_data(as_text=True)
@@ -221,6 +224,7 @@ def test_non_scholarly_output_uses_creativework(app, client):
 # ----------------------------------------------------------------------
 # AC-17：structured data 不含頁面看不到的內容
 # ----------------------------------------------------------------------
+@pytest.mark.acceptance
 def test_ac17_person_jsonld_only_contains_visible_values(client, sample_person):
     """AC-17：Person JSON-LD 的每個值都必須出現在頁面上。
 
@@ -260,6 +264,7 @@ def test_ac17_person_jsonld_only_contains_visible_values(client, sample_person):
             )
 
 
+@pytest.mark.acceptance
 def test_ac17_no_fabricated_metrics_in_jsonld(client, sample_output):
     """AC-17：JSON-LD 不得出現虛構的評分或引用數。
 
@@ -276,6 +281,7 @@ def test_ac17_no_fabricated_metrics_in_jsonld(client, sample_output):
         assert not present, f"JSON-LD 不得包含未經驗證的統計欄位：{present}"
 
 
+@pytest.mark.acceptance
 def test_ac17_person_without_email_omits_email_field(app, client):
     """未填 Email 的人物，JSON-LD 不得輸出 email 欄位。"""
     from app.services.person_service import PersonService
