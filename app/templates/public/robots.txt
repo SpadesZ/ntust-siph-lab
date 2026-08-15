@@ -1,0 +1,44 @@
+{#-
+============================================================
+NTUST SiPh Lab - robots.txt Template
+
+上下游：
+  public/routes.py::robots_txt() -> 本模板 -> text/plain
+
+檔案路徑：app/templates/public/robots.txt
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §12.1）：
+  「允許 public；禁止 /admin/；sitemap 指示」。
+
+policy=private 的用途：
+  staging（run.app 暫時網址）必須全站 Disallow，
+  否則會與正式網域產生重複內容且難以移除
+  （見 public/routes.py::robots_txt 的說明）。
+
+已知限制與禁止事項：
+  1. 禁止 Disallow /uploads/ —— 圖片需要被索引才能出現在
+     圖片搜尋，且 OG 圖片需可被社群平台抓取。
+  2. robots.txt 不是存取控制；/admin 的真正保護來自
+     login_required + CSRF + session（SAI §7.1）。
+
+驗證方式：
+  pytest tests/test_seo.py::test_robots_disallows_admin
+============================================================
+-#}
+{% if policy == 'private' %}
+# staging / 非正式環境：暫時全站不索引。
+User-agent: *
+Disallow: /
+{% else %}
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /admin
+
+Sitemap: {{ sitemap_url }}
+{% if llms_enabled %}
+# 實驗性 agent-readable 檔案（非 Google 排名必要條件，SAI §13.2）
+# {{ llms_url }}
+{% endif %}
+{% endif %}

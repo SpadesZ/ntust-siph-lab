@@ -1,0 +1,125 @@
+{#
+============================================================
+NTUST SiPh Lab - Admin Alumni List (/admin/alumni)
+
+上下游：
+  blueprints/admin/routes.py::alumni_list() -> 本模板
+  資料：alumni_groups = [(year, [Person, ...]), ...]（含未發布）
+
+檔案路徑：app/templates/admin/alumni_list.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §7.3）：
+  「畢業生：年度列表、編輯 / 發布」
+
+與 /admin/people?status=alumni 的差異：
+  people_list 是「以人為單位的平面表格」，適合搜尋特定人物；
+  本頁是「以年度分組」，適合檢視某一屆的完整名單與缺漏。
+  兩者服務不同任務，因此都保留（SAI §7.3 側選單同時列出
+  「研究成員」與「畢業生」兩個項目）。
+
+顯示已發布與未發布：
+  本頁使用 published_only=False，因為管理者需要看到
+  尚未發布的畢業生才能補完資料 —— 這正是此頁的主要用途。
+
+已知限制與禁止事項：
+  1. 不提供刪除（SAI §7.6）。
+  2. 就業資訊在此列表不顯示（隱私考量，僅在編輯頁可見）。
+
+驗證方式：
+  pytest tests/test_admin.py::test_alumni_list_renders
+============================================================
+#}
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import status_badge %}
+
+{% block page_title %}畢業生{% endblock %}
+
+{% block page_desc %}
+<p class="admin-header__desc">
+  依畢業年度檢視畢業生名單，包含尚未發布者。
+  若要將在學成員轉為畢業生，請至該成員的編輯頁使用「轉為畢業生」功能 ——
+  轉換後個人網址與研究成果關聯都不會改變。
+</p>
+{% endblock %}
+
+{% block header_actions %}
+<a class="btn btn--secondary btn--small"
+   href="{{ url_for('admin.people_list', status='current') }}">查看在學成員</a>
+{% endblock %}
+
+{% block content %}
+
+{% if alumni_groups %}
+  {% for year, group in alumni_groups %}
+  <section class="admin-panel" aria-labelledby="admin-year-{{ year or 'unspecified' }}">
+    <h2 class="admin-panel__title" id="admin-year-{{ year or 'unspecified' }}">
+      {{ year if year else '年度未標示' }}
+      <span class="year-group__count">（{{ group | length }} 位）</span>
+    </h2>
+
+    {% if not year %}
+    <p class="form-field__hint" style="margin-bottom: var(--space-4);">
+      這些畢業生尚未填寫畢業年度，因此不會出現在前台的年度分組中。
+      請編輯後補上年度。
+    </p>
+    {% endif %}
+
+    <div class="table-wrap">
+      <table class="data-table">
+        <caption class="sr-only">{{ year or '年度未標示' }} 畢業生</caption>
+        <thead>
+          <tr>
+            <th scope="col">姓名</th>
+            <th scope="col">學位</th>
+            <th scope="col">論文題目</th>
+            <th scope="col">狀態</th>
+            <th scope="col">關聯成果</th>
+            <th scope="col">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for person in group %}
+          <tr>
+            <td>
+              <a class="data-table__title" href="{{ url_for('admin.person_edit', person_id=person.id) }}">
+                {{ person.name_zh }}
+              </a>
+              <span class="data-table__sub">
+                {% if person.name_en %}{{ person.name_en }} · {% endif %}/people/{{ person.slug }}
+              </span>
+            </td>
+            <td>{{ person.degree or '—' }}</td>
+            <td style="max-width: 320px;">
+              {{ person.thesis_title_zh or person.thesis_title_en or '—' }}
+            </td>
+            <td>{{ status_badge(person.publish_status) }}</td>
+            <td>{{ person.output_links | length }}</td>
+            <td>
+              <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
+                <a class="btn btn--secondary btn--small"
+                   href="{{ url_for('admin.person_edit', person_id=person.id) }}">編輯</a>
+                {% if person.publish_status == 'published' %}
+                <a class="btn btn--ghost btn--small" target="_blank" rel="noopener"
+                   href="{{ url_for('public.person_detail', slug=person.slug) }}">前台 ↗</a>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endfor %}
+
+{% else %}
+<div class="admin-panel">
+  <p style="color: var(--color-ink-soft);">
+    尚無畢業生資料。當在學成員完成學業後，可於該成員的編輯頁使用
+    「轉為畢業生」功能，系統會保留其個人網址與所有研究成果關聯。
+  </p>
+</div>
+{% endif %}
+
+{% endblock %}

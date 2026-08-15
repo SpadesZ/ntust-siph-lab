@@ -1,0 +1,64 @@
+# ============================================================
+# NTUST SiPh Lab - Git Exclusions
+#
+# 檔案路徑：.gitignore
+# 建立日期：2026-08-14 / 版本：v1.0
+#
+# 目的（SAI §11.2 Secret leak、§24 資料隱私）：
+#   1. 機密絕不進入版本控制。
+#   2. 本機資料（資料庫、上傳的人物照片、備份）不進入 repo ——
+#      人物照片屬於個資，不應散布在 Git 歷史中。
+#   3. 產生物（虛擬環境、快取）不進入 repo。
+#
+# 刻意「不」忽略的項目：
+#   - legacy/google_sites/**  母站遷移證據鏈必須進版控（ADR-011），
+#     包含已下載的母站資產與自動產生的 CSV/報告，
+#     它們是零遺漏遷移的稽核證據。
+#   - migrations/versions/**  schema 變更必須可追溯。
+#
+# 維護契約：
+#   新增會產生機密或本機狀態的路徑時，必須同步更新
+#   本檔與 .dockerignore。
+# ============================================================
+
+# --- 機密 ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+service-account*.json
+
+# --- 本機資料 ---
+instance/
+uploads/
+backups/
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# --- 編輯器與作業系統 ---
+.idea/
+.vscode/
+.claude/
+.DS_Store
+Thumbs.db
+
+# --- 保留母站遷移證據（明確 un-ignore）---
+!legacy/
+!legacy/**

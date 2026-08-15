@@ -1,0 +1,124 @@
+{#
+============================================================
+NTUST SiPh Lab - Alumni Page (/alumni)
+
+上下游：
+  blueprints/public/routes.py::alumni() -> 本模板
+  資料：alumni_groups = [(year, [Person, ...]), ...]（新到舊）
+
+檔案路徑：app/templates/public/alumni.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §5.4）：
+  「按畢業年度可找到人物與論文」。列表必要欄位為
+  姓名、畢業年度、論文題目或研究主題。
+
+隱私規則（SAI §5.4）：
+  只顯示已設定公開的人（repository 已過濾 publish_status）。
+  就業資訊完全不在列表顯示 —— 即使 destination_public=True，
+  那也屬於詳細頁的內容，列表保持精簡。
+
+結構選擇：
+  以年度分組的 <section>，每組一個 <h2>。
+  刻意不用卡片 grid，而用表格式的清單 ——
+  畢業生列表的閱讀行為是「找特定年份/特定人」，
+  清單比卡片更容易掃描（SAI §6.3 第 2 條：結構要根據內容語義選擇）。
+
+已知限制與禁止事項：
+  1. 未填畢業年度者歸在「年度未標示」群組，
+     不猜測年份（SAI §2.3 禁止推測填入）。
+  2. 每頁唯一 h1（AC-18）。
+
+驗證方式：
+  pytest tests/test_people.py::test_alumni_grouped_by_year
+============================================================
+#}
+{% extends "public/base.html" %}
+
+{% block breadcrumb_current %}畢業生{% endblock %}
+
+{% block content %}
+<div class="container">
+
+  <header class="section section--tight">
+    <span class="section-label">Alumni</span>
+    <h1 class="trace-underline">畢業生</h1>
+    <p class="prose" style="max-width: var(--measure-narrow); margin-top: var(--space-5);">
+      {{ settings.lab_name_zh }}歷屆畢業生與其論文題目，依畢業年度排列。
+      點選姓名可查看該位畢業生的研究方向與相關研究成果。
+    </p>
+  </header>
+
+  <section class="section section--tight" aria-labelledby="alumni-list-heading">
+    <h2 class="sr-only" id="alumni-list-heading">畢業生年度列表</h2>
+
+    {% if alumni_groups %}
+      {% for year, group in alumni_groups %}
+      <section class="year-group" aria-labelledby="year-{{ year or 'unspecified' }}">
+        <div class="year-group__heading">
+          <h3 class="year-group__year" id="year-{{ year or 'unspecified' }}">
+            {{ year if year else '年度未標示' }}
+          </h3>
+          <span class="year-group__count">{{ group | length }} 位</span>
+        </div>
+
+        <ul class="stack-list">
+          {% for person in group %}
+          <li>
+            <article class="card">
+              <h4 class="card__title">
+                <a href="{{ url_for('public.person_detail', slug=person.slug) }}">
+                  {{ person.name_zh }}
+                </a>
+                {% if person.name_en %}
+                <span class="person-card__role">{{ person.name_en }}</span>
+                {% endif %}
+              </h4>
+
+              <dl class="meta-list" style="margin-top: var(--space-3);">
+                {% if person.degree %}
+                <dt>學位</dt><dd>{{ person.degree }}</dd>
+                {% endif %}
+
+                {% if person.thesis_title_zh or person.thesis_title_en %}
+                <dt>論文題目</dt>
+                <dd>{{ person.thesis_title_zh or person.thesis_title_en }}</dd>
+                {% elif person.research_focus_zh or person.research_focus_en %}
+                <dt>研究主題</dt>
+                <dd>{{ person.research_focus_zh or person.research_focus_en }}</dd>
+                {% endif %}
+              </dl>
+
+              {% if person.skills %}
+              <ul class="tag-list card__footer">
+                {% for skill in person.skills[:4] %}
+                <li><span class="tag">{{ skill }}</span></li>
+                {% endfor %}
+              </ul>
+              {% endif %}
+            </article>
+          </li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endfor %}
+
+    {% else %}
+    <div class="empty-state">
+      <p class="empty-state__title">尚未發布畢業生資料</p>
+      <p>
+        當在學成員完成學業後，管理者可於後台將其轉為畢業生，
+        該成員即會出現在此頁面（其個人網址與研究成果關聯不會變動）。
+      </p>
+    </div>
+    {% endif %}
+  </section>
+
+  <nav class="next-steps" aria-label="延伸瀏覽">
+    <a class="btn btn--secondary" href="{{ url_for('public.members') }}">在學研究成員</a>
+    <a class="btn btn--secondary" href="{{ url_for('public.research_index') }}">研究成果</a>
+    <a class="btn btn--primary" href="{{ url_for('public.join') }}">加入研究室</a>
+  </nav>
+
+</div>
+{% endblock %}

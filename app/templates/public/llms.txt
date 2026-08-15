@@ -1,0 +1,47 @@
+{#-
+============================================================
+NTUST SiPh Lab - llms.txt Template（實驗性相容層）
+
+上下游：
+  public/routes.py::llms_txt() -> 本模板 -> text/plain
+  僅在 config.ENABLE_LLMS_TXT 與 SiteSetting.llms_txt_enabled
+  同時為真時才提供（雙重開關，見 routes 的 _llms_enabled）。
+
+檔案路徑：app/templates/public/llms.txt
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §13.2）：
+  第三方 AI SEO Skill 常建議 llms.txt [S3]，本案可產出，
+  但必須標記為「實驗性相容層」。
+
+  Google 官方明確說明：針對 AI Overviews / AI Mode，
+  不需要 llms.txt 或特殊 AI markup [S5]。
+  因此本檔開頭即註明此事實，避免日後維護者或管理者
+  誤以為它是排名必要條件。
+
+已知限制與禁止事項：
+  1. 禁止在此放置頁面上看不到的內容
+     （SAI §13.1 No hidden AI-only text）。
+  2. 禁止宣稱此檔案能提升排名。
+  3. 只列 canonical HTML 頁面連結，不重複內容本體。
+
+驗證方式：
+  pytest tests/test_seo.py::test_llms_txt_disabled_by_default
+============================================================
+-#}
+# {{ settings.lab_name_zh }}{% if settings.lab_name_en and settings.lab_name_en != settings.lab_name_zh %} / {{ settings.lab_name_en }}{% endif %}
+
+# NOTE: This file is an experimental compatibility layer.
+# It is NOT required by Google for AI Overviews or AI Mode,
+# and it does not affect search ranking.
+# Canonical HTML pages remain the single source of truth.
+
+- Home: {{ base_url }}/
+- About: {{ about_url }}
+- Current members: {{ members_url }}
+- Research outputs: {{ research_url }}
+- Alumni: {{ alumni_url }}
+- Join / Contact: {{ join_url }}
+
+# Prefer canonical HTML pages as source of truth.
+# Sitemap: {{ base_url }}/sitemap.xml

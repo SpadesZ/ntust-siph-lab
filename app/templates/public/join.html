@@ -1,0 +1,158 @@
+{#
+============================================================
+NTUST SiPh Lab - Join / Contact Page (/join)
+
+上下游：
+  blueprints/public/routes.py::join() -> 本模板
+  資料：settings（join_* / contact_* / address / map_url）、faculty
+
+檔案路徑：app/templates/public/join.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §4.1、§5.1 順序 07）：
+  「招募、聯絡、位置」與「明確下一步」。
+
+設計決策：不提供聯絡表單
+  理由有三：
+    1. SAI §9.5 明確說明 v1 除 health check 外不建立 API，
+       且不需要 public API；表單需要 POST 端點與垃圾訊息防護。
+    2. 聯絡表單需要寄信服務（SMTP/SendGrid），會引入
+       額外的雲端相依與 secret 管理，超出 v1 範圍。
+    3. 學術招募的實際行為是「寄信給教授並附上成績單/CV」，
+       mailto 連結比表單更符合使用情境。
+  若未來要加入表單，必須另開 ADR 並處理 CSRF、rate limit
+  與垃圾訊息。
+
+已知限制與禁止事項：
+  1. 禁止在此顯示未經確認可公開的聯絡方式。
+  2. 每頁唯一 h1（AC-18）。
+  3. 招募文案全部來自 SiteSetting，不得硬編碼。
+
+驗證方式：
+  pytest tests/test_seo.py::test_join_page_renders
+============================================================
+#}
+{% extends "public/base.html" %}
+
+{% block breadcrumb_current %}加入我們{% endblock %}
+
+{% block content %}
+<div class="container">
+
+  <header class="section section--tight">
+    <span class="section-label">Join Us</span>
+    <h1 class="trace-underline">{{ settings.join_title_zh or '加入研究室' }}</h1>
+  </header>
+
+  <div class="split-panel section section--tight">
+
+    {# ---------- 招募說明 ---------- #}
+    <div class="prose">
+      {% if settings.join_body_zh %}
+      <div class="prose--preserve">{{ settings.join_body_zh }}</div>
+      {% else %}
+      <div class="empty-state">
+        <p class="empty-state__title">招募說明尚未設定</p>
+        <p>管理者可於後台「網站設定 → 招募與聯絡」填寫招募內容。</p>
+      </div>
+      {% endif %}
+
+      {% if settings.join_cta_url and settings.join_cta_label_zh %}
+      <p style="margin-top: var(--space-8);">
+        <a class="btn btn--primary" href="{{ settings.join_cta_url }}" rel="noopener">
+          {{ settings.join_cta_label_zh }}
+        </a>
+      </p>
+      {% endif %}
+    </div>
+
+    {# ---------- 聯絡資訊 ---------- #}
+    <aside class="output-aside" aria-labelledby="contact-heading">
+      <h2 class="output-aside__title" id="contact-heading">聯絡方式</h2>
+
+      <dl class="meta-list" style="grid-template-columns: minmax(0, 1fr);">
+        {% if faculty %}
+        <dt>指導教授</dt>
+        <dd>
+          <a href="{{ url_for('public.person_detail', slug=faculty.slug) }}">
+            {{ faculty.name_zh }}
+          </a>
+          {% if faculty.title_zh %}<br>{{ faculty.title_zh }}{% endif %}
+        </dd>
+        {% endif %}
+
+        {% set contact_email = settings.contact_email or (faculty.email_public if faculty else None) %}
+        {% if contact_email %}
+        <dt>Email</dt>
+        <dd><a href="mailto:{{ contact_email }}">{{ contact_email }}</a></dd>
+        {% endif %}
+
+        {% if settings.university_zh or settings.department_zh %}
+        <dt>單位</dt>
+        <dd>
+          {{ settings.university_zh or '' }}
+          {% if settings.department_zh %}<br>{{ settings.department_zh }}{% endif %}
+        </dd>
+        {% endif %}
+
+        {% if settings.address_zh %}
+        <dt>地址</dt>
+        <dd>
+          {{ settings.address_zh }}
+          {% if settings.map_url %}
+          <br><a href="{{ settings.map_url }}" rel="noopener">在地圖上開啟</a>
+          {% endif %}
+        </dd>
+        {% endif %}
+      </dl>
+    </aside>
+  </div>
+
+  <hr class="waveguide-rule">
+
+  {# ---------- 了解研究室的建議順序（有順序意義，符合 §6.3 第 4 條） ---------- #}
+  <section class="section section--tight" aria-labelledby="next-heading">
+    <div class="section-header">
+      <div>
+        <span class="section-label">Before You Apply</span>
+        <h2 class="section-title trace-underline" id="next-heading">申請前建議先了解</h2>
+      </div>
+    </div>
+
+    <ol class="ordered-steps prose">
+      <li>
+        <h3 class="focus-item__title">確認研究方向是否相符</h3>
+        <p>
+          先閱讀
+          <a href="{{ url_for('public.about') }}">關於研究室</a>
+          頁面的研究方向，確認與自己的興趣一致。
+        </p>
+      </li>
+      <li>
+        <h3 class="focus-item__title">閱讀代表研究成果</h3>
+        <p>
+          <a href="{{ url_for('public.research_index') }}">研究成果</a>
+          頁面說明每項研究的問題、方法與結果，可具體了解研究室的工作內容。
+        </p>
+      </li>
+      <li>
+        <h3 class="focus-item__title">了解目前團隊在做什麼</h3>
+        <p>
+          <a href="{{ url_for('public.members') }}">研究成員</a>
+          頁面列出每位在學成員的研究焦點。
+        </p>
+      </li>
+      {% if contact_email %}
+      <li>
+        <h3 class="focus-item__title">來信聯絡</h3>
+        <p>
+          請於信中說明研究興趣、相關背景與希望投入的方向，寄至
+          <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>。
+        </p>
+      </li>
+      {% endif %}
+    </ol>
+  </section>
+
+</div>
+{% endblock %}

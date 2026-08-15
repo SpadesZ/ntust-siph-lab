@@ -1,0 +1,171 @@
+{#
+============================================================
+NTUST SiPh Lab - Admin Research List (/admin/research)
+
+上下游：
+  blueprints/admin/routes.py::research_list() -> 本模板
+  資料：outputs、available_years、output_types、active_* 篩選值
+
+檔案路徑：app/templates/admin/research_list.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §7.3）：
+  「研究成果：列表 / type / year / status 篩選、新增、
+    編輯 / featured / 發布 / 封存」
+
+篩選器：三個下拉（類型/年份/狀態）+ 關鍵字搜尋，GET 表單。
+
+表格欄位選擇：
+  標題、類型、年份、狀態（含精選標記）、關聯成員數、最後更新。
+  關聯成員數是重要的品質訊號 —— 沒有關聯成員的成果
+  在前台會缺少實體關聯（SAI §13.1 Cross-entity linking）。
+
+已知限制與禁止事項：
+  1. 列表不提供刪除（SAI §7.6）。
+  2. 精選切換在編輯頁操作，列表只顯示狀態 ——
+     避免列表上密集的 POST 按鈕造成誤觸。
+
+驗證方式：
+  pytest tests/test_admin.py::test_research_list_filters
+============================================================
+#}
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import status_badge %}
+
+{% block page_title %}研究成果{% endblock %}
+
+{% block page_desc %}
+<p class="admin-header__desc">
+  期刊論文、會議論文、研究專案、原型系統、模擬研究與資料集，
+  以「類型」欄位區分，共用同一份資料結構。
+</p>
+{% endblock %}
+
+{% block header_actions %}
+<a class="btn btn--primary btn--small" href="{{ url_for('admin.research_new') }}">新增研究成果</a>
+{% endblock %}
+
+{% block content %}
+
+<form class="filter-bar" method="get" action="{{ url_for('admin.research_list') }}"
+      role="search" aria-label="研究成果篩選">
+
+  <div class="filter-bar__field">
+    <label class="filter-bar__label" for="filter-type">類型</label>
+    <select class="select" id="filter-type" name="type">
+      <option value="">全部類型</option>
+      {% for t in output_types %}
+      <option value="{{ t }}" {% if active_type == t %}selected{% endif %}>{{ type_labels[t] }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="filter-bar__field">
+    <label class="filter-bar__label" for="filter-year">年份</label>
+    <select class="select" id="filter-year" name="year">
+      <option value="">全部年份</option>
+      {% for y in available_years %}
+      <option value="{{ y }}" {% if active_year == y %}selected{% endif %}>{{ y }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="filter-bar__field">
+    <label class="filter-bar__label" for="filter-publish">狀態</label>
+    <select class="select" id="filter-publish" name="publish_status">
+      <option value="">全部狀態</option>
+      {% set publish_labels = {'published': '已發布', 'draft': '草稿', 'archived': '已封存'} %}
+      {% for s in publish_statuses %}
+      <option value="{{ s }}" {% if active_publish_status == s %}selected{% endif %}>{{ publish_labels.get(s, s) }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="filter-bar__field" style="flex: 1; min-width: 180px;">
+    <label class="filter-bar__label" for="filter-q">搜尋</label>
+    <input class="input" type="search" id="filter-q" name="q"
+           value="{{ active_query or '' }}" placeholder="標題或 slug">
+  </div>
+
+  <div class="filter-bar__field">
+    <button class="btn btn--primary" type="submit">套用</button>
+  </div>
+
+  {% if active_type or active_year or active_publish_status or active_query %}
+  <div class="filter-bar__field">
+    <a class="btn btn--ghost" href="{{ url_for('admin.research_list') }}">清除</a>
+  </div>
+  {% endif %}
+</form>
+
+<div class="table-wrap">
+  {% if outputs %}
+  <table class="data-table">
+    <caption class="sr-only">研究成果列表，共 {{ outputs | length }} 筆</caption>
+    <thead>
+      <tr>
+        <th scope="col">標題</th>
+        <th scope="col">類型</th>
+        <th scope="col">年份</th>
+        <th scope="col">狀態</th>
+        <th scope="col">關聯成員</th>
+        <th scope="col">最後更新</th>
+        <th scope="col">操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for output in outputs %}
+      <tr>
+        <td>
+          <a class="data-table__title" href="{{ url_for('admin.research_edit', output_id=output.id) }}">
+            {{ output.display_title }}
+          </a>
+          <span class="data-table__sub">/research/{{ output.slug }}</span>
+        </td>
+        <td>{{ output.type_label_zh }}</td>
+        <td style="font-family: var(--font-mono);">{{ output.year }}</td>
+        <td>
+          {{ status_badge(output.publish_status) }}
+          {% if output.is_featured %}
+          <span class="status-badge status-badge--featured">精選</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if output.person_links %}
+          {{ output.person_links | length }} 位
+          <span class="data-table__sub">
+            {{ output.lab_people | map(attribute='name_zh') | join('、') }}
+          </span>
+          {% else %}
+          <span style="color: var(--color-warning);">未關聯</span>
+          {% endif %}
+        </td>
+        <td style="white-space: nowrap; font-size: var(--text-xs); color: var(--color-ink-faint);">
+          {{ output.updated_at | local_date }}
+        </td>
+        <td>
+          <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
+            <a class="btn btn--secondary btn--small"
+               href="{{ url_for('admin.research_edit', output_id=output.id) }}">編輯</a>
+            {% if output.publish_status == 'published' %}
+            <a class="btn btn--ghost btn--small" target="_blank" rel="noopener"
+               href="{{ url_for('public.research_detail', slug=output.slug) }}">前台檢視 ↗</a>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="table-empty">
+    {% if active_type or active_year or active_publish_status or active_query %}
+    沒有符合條件的研究成果。<a href="{{ url_for('admin.research_list') }}">清除篩選</a>
+    {% else %}
+    尚未建立任何研究成果。<a href="{{ url_for('admin.research_new') }}">立即新增</a>
+    {% endif %}
+  </p>
+  {% endif %}
+</div>
+
+{% endblock %}

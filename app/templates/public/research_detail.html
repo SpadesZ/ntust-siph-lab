@@ -1,0 +1,228 @@
+{#
+============================================================
+NTUST SiPh Lab - Research Output Detail (/research/<slug>)
+
+上下游：
+  blueprints/public/routes.py::research_detail() -> 本模板
+  資料：output（ResearchOutput）、related_people
+  JSON-LD：SchemaService.research_output() -> base.html
+
+檔案路徑：app/templates/public/research_detail.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §5.3）：
+  「研究成果詳細頁是 SEO/GEO 最重要的內容單位。每筆成果都必須
+   回答問題、方法、結果、意義，並提供可驗證的作者、年份、
+   venue/DOI/外部連結。」
+
+SAI §5.3 區塊對照（本模板逐一實作）：
+  Header                  -> type badge、年份、title zh/en、作者、venue、DOI
+  Executive summary       -> 約 80-180 字
+  Research question       -> Problem 區塊
+  Method                  -> Method 區塊
+  Key results             -> Results 區塊
+  Significance/limitation -> Significance 區塊
+  Related people          -> 連回 person pages（AC-07）
+  References / Links      -> DOI、出版社、GitHub、dataset
+  Metadata                -> updated date、canonical、JSON-LD、OG
+
+GEO contract（SAI §13.1）：
+  Answerable structure —— 四段式標題讓人類與機器都能快速定位。
+  這些標題是真實的 <h2>，不是為了切 chunk 而加的假結構
+  （SAI §5.3 明確說「不是為 AI 硬切 chunk」）。
+
+已知限制與禁止事項：
+  1. 禁止顯示未填寫的欄位（不輸出「無」「N/A」等佔位文字）。
+  2. 禁止顯示虛構的 metrics（SAI §6.3、§14.3）。
+  3. 每頁唯一 h1（AC-18）：成果標題。
+
+驗證方式：
+  pytest tests/test_research.py tests/test_schema.py
+============================================================
+#}
+{% extends "public/base.html" %}
+
+{% block breadcrumb_current %}{{ output.display_title | truncate(40, true, '…') }}{% endblock %}
+
+{% block content %}
+<article class="container">
+
+  {# ---------- Header（SAI §5.3：快速識別成果） ---------- #}
+  <header class="output-header">
+    <div class="output-header__meta">
+      <span class="type-badge">{{ output.type_label_zh }}</span>
+      <span class="year-badge">
+        {% if output.publication_date %}
+        <time datetime="{{ output.publication_date | iso_date }}">
+          {{ output.publication_date | local_date }}
+        </time>
+        {% else %}
+        {{ output.year }}
+        {% endif %}
+      </span>
+      {% if output.venue %}<span>{{ output.venue }}</span>{% endif %}
+    </div>
+
+    <h1 class="output-header__title">{{ output.display_title }}</h1>
+
+    {% if output.title_en and output.title_zh %}
+    <p class="output-header__title-en">{{ output.title_en }}</p>
+    {% endif %}
+
+    {# 作者：Lab 成員可點擊連回人物頁；完整作者列為純文字 #}
+    {% if output.public_lab_people or output.authors_display_text %}
+    <p class="prose" style="margin-bottom: 0;">
+      {% if output.authors_display_text %}
+        {{ output.authors_display_text }}
+      {% else %}
+        {% for person in output.public_lab_people %}
+        <a href="{{ url_for('public.person_detail', slug=person.slug) }}">{{ person.name_zh }}</a>{% if not loop.last %}、{% endif %}
+        {% endfor %}
+      {% endif %}
+    </p>
+    {% endif %}
+  </header>
+
+  <div class="output-body">
+
+    {# ================= 主要內容 ================= #}
+    <div>
+      {% if output.hero_image_path %}
+      <figure style="margin: 0 0 var(--space-8);">
+        <img class="output-hero-image"
+             src="{{ media_url(output.hero_image_path) }}"
+             alt="{{ output.hero_image_alt_zh or (output.display_title ~ ' 示意圖') }}"
+             width="900" height="500" loading="eager">
+        {% if output.hero_image_alt_zh %}
+        <figcaption class="figure-caption">{{ output.hero_image_alt_zh }}</figcaption>
+        {% endif %}
+      </figure>
+      {% endif %}
+
+      {# ---------- Executive summary（SAI §5.3） ---------- #}
+      {% if output.summary_zh or output.summary_en %}
+      <section class="output-section" aria-labelledby="summary-heading">
+        <h2 class="output-section__title" id="summary-heading">摘要</h2>
+        <div class="prose prose--preserve">{{ output.summary_zh or output.summary_en }}</div>
+        {% if output.summary_zh and output.summary_en %}
+        <details style="margin-top: var(--space-4);">
+          <summary style="cursor: pointer; font-size: var(--text-sm);">English summary</summary>
+          <div class="prose prose--preserve" style="margin-top: var(--space-3);">
+            {{ output.summary_en }}
+          </div>
+        </details>
+        {% endif %}
+      </section>
+      {% endif %}
+
+      {# ---------- Research question ---------- #}
+      {% if output.problem_zh %}
+      <section class="output-section" aria-labelledby="problem-heading">
+        <h2 class="output-section__title" id="problem-heading">研究問題 Problem</h2>
+        <div class="prose prose--preserve">{{ output.problem_zh }}</div>
+      </section>
+      {% endif %}
+
+      {# ---------- Method ---------- #}
+      {% if output.method_zh %}
+      <section class="output-section" aria-labelledby="method-heading">
+        <h2 class="output-section__title" id="method-heading">研究方法 Method</h2>
+        <div class="prose prose--preserve">{{ output.method_zh }}</div>
+      </section>
+      {% endif %}
+
+      {# ---------- Key results ---------- #}
+      {% if output.results_zh %}
+      <section class="output-section" aria-labelledby="results-heading">
+        <h2 class="output-section__title" id="results-heading">主要結果 Key Results</h2>
+        <div class="prose prose--preserve">{{ output.results_zh }}</div>
+      </section>
+      {% endif %}
+
+      {# ---------- Significance / limitation ---------- #}
+      {% if output.significance_zh %}
+      <section class="output-section" aria-labelledby="significance-heading">
+        <h2 class="output-section__title" id="significance-heading">貢獻與限制 Significance</h2>
+        <div class="prose prose--preserve">{{ output.significance_zh }}</div>
+      </section>
+      {% endif %}
+
+      {# ---------- Related people（AC-07 雙向導航） ---------- #}
+      {% if related_people %}
+      <section class="output-section" aria-labelledby="people-heading">
+        <h2 class="output-section__title" id="people-heading">研究室參與成員</h2>
+        <ul class="link-row">
+          {% for person in related_people %}
+          <li>
+            <a class="link-chip" href="{{ url_for('public.person_detail', slug=person.slug) }}">
+              {{ person.name_zh }}
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+    </div>
+
+    {# ================= 側欄：可驗證資訊 ================= #}
+    <aside class="output-aside" aria-labelledby="metadata-heading">
+      <h2 class="output-aside__title" id="metadata-heading">成果資訊</h2>
+
+      <dl class="meta-list" style="grid-template-columns: minmax(0, 1fr);">
+        <dt>類型</dt>
+        <dd>{{ output.type_label_zh }}（{{ output.type_label_en }}）</dd>
+
+        <dt>年份</dt>
+        <dd>{{ output.year }}</dd>
+
+        {% if output.venue %}
+        <dt>發表處</dt>
+        <dd>{{ output.venue }}</dd>
+        {% endif %}
+
+        {% if output.doi %}
+        <dt>DOI</dt>
+        <dd><a href="{{ output.doi_url }}" rel="noopener">{{ output.doi }}</a></dd>
+        {% endif %}
+      </dl>
+
+      {# ---------- References / Links（SAI §5.3 可驗證性） ---------- #}
+      {% if output.external_url or output.github_url or output.dataset_url %}
+      <h2 class="output-aside__title" style="margin-top: var(--space-6);">相關連結</h2>
+      <ul class="site-footer__list" style="list-style: none; padding: 0; margin: 0;">
+        {% if output.external_url %}
+        <li><a href="{{ output.external_url }}" rel="noopener">出版社／專案頁面</a></li>
+        {% endif %}
+        {% if output.github_url %}
+        <li><a href="{{ output.github_url }}" rel="noopener">程式碼 Repository</a></li>
+        {% endif %}
+        {% if output.dataset_url %}
+        <li><a href="{{ output.dataset_url }}" rel="noopener">資料集</a></li>
+        {% endif %}
+      </ul>
+      {% endif %}
+
+      {% if output.keywords %}
+      <h2 class="output-aside__title" style="margin-top: var(--space-6);">關鍵字</h2>
+      <ul class="tag-list">
+        {% for keyword in output.keywords %}
+        <li><span class="tag">{{ keyword }}</span></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </aside>
+  </div>
+
+  {# ---------- Metadata / 頁尾 ---------- #}
+  <p class="last-updated">
+    最後更新：<time datetime="{{ output.updated_at | iso_datetime }}">{{ output.updated_at | local_date }}</time>
+  </p>
+
+  <nav class="next-steps" aria-label="延伸瀏覽">
+    <a class="btn btn--secondary" href="{{ url_for('public.research_index') }}">← 返回研究成果</a>
+    <a class="btn btn--secondary" href="{{ url_for('public.members') }}">認識研究成員</a>
+    <a class="btn btn--primary" href="{{ url_for('public.join') }}">加入研究室</a>
+  </nav>
+
+</article>
+{% endblock %}

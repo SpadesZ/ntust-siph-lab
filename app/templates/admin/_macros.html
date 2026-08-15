@@ -1,0 +1,194 @@
+{#
+============================================================
+NTUST SiPh Lab - Admin Form Macros
+
+上下游：
+  admin/*.html -> {% from "admin/_macros.html" import field, ... %}
+  WTForms field 物件 -> 本巨集 -> 具備 label/hint/error 的 HTML
+
+檔案路徑：app/templates/admin/_macros.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §17 Forms、§14.2 UX contract）：
+  「label 與 input 正確關聯；error message 指向欄位且有文字」
+  「表單顯示必填/選填狀態、驗證與已儲存狀態」
+
+  把欄位渲染集中成巨集的理由：
+    後台有超過 80 個欄位。若每個欄位在模板中手寫
+    label + input + error，必然有欄位漏掉 aria-describedby
+    或錯誤顯示，造成可及性缺陷散布在各處且難以稽核。
+    集中後，可及性正確性只需驗證這一個檔案。
+
+可及性實作重點：
+  1. label 的 for 與 input 的 id 由 WTForms 自動對應。
+  2. hint 與 error 各有獨立 id，透過 aria-describedby 關聯到
+     input —— 螢幕閱讀器聚焦欄位時會一併讀出。
+  3. 有錯誤時加上 aria-invalid="true"。
+  4. 必填欄位同時有視覺星號與 aria-required。
+
+巨集清單：
+  field(f, ...)        - 一般輸入（text/number/select/textarea/file）
+  checkbox(f, ...)     - 核取方塊
+  multiselect(f, ...)  - 多選清單
+  status_badge(status) - 發布狀態徽章
+  confirm_button(...)  - 帶 CSRF 的單一動作 POST 表單
+
+已知限制與禁止事項：
+  1. 禁止在巨集外自行手寫 <input>；那會繞過可及性處理。
+  2. 禁止移除 aria-describedby 的關聯邏輯。
+
+驗證方式：
+  pytest tests/test_admin.py::test_form_fields_have_labels
+  人工：螢幕閱讀器或瀏覽器 accessibility inspector
+============================================================
+#}
+
+{#
+  一般欄位。
+
+  參數：
+    f        - WTForms 欄位物件
+    css      - input 的 class（預設 input）
+    full     - True 時佔滿整個 form-grid 寬度
+    required - 顯式標示必填（WTForms 的 DataRequired 無法可靠反查）
+    rows     - textarea 列數
+#}
+{% macro field(f, css='input', full=false, required=false, rows=none) %}
+{% set has_error = f.errors %}
+{% set hint_id = f.id ~ '-hint' %}
+{% set error_id = f.id ~ '-error' %}
+{#
+  aria-describedby 同時關聯 hint 與 error。
+  兩者都可能不存在，因此組成清單後再過濾空值。
+#}
+{% set described = [] %}
+{% if f.description %}{% set _ = described.append(hint_id) %}{% endif %}
+{% if has_error %}{% set _ = described.append(error_id) %}{% endif %}
+
+<div class="form-field {% if full %}form-field--full{% endif %} {% if has_error %}form-field--has-error{% endif %}">
+  {{ f.label(class='form-field__label') }}
+
+  {% set attrs = {'class': css} %}
+  {% if described %}{% set _ = attrs.update({'aria-describedby': described | join(' ')}) %}{% endif %}
+  {% if has_error %}{% set _ = attrs.update({'aria-invalid': 'true'}) %}{% endif %}
+  {% if required %}{% set _ = attrs.update({'aria-required': 'true'}) %}{% endif %}
+  {% if rows %}{% set _ = attrs.update({'rows': rows}) %}{% endif %}
+  {{ f(**attrs) }}
+
+  {% if f.description %}
+  <p class="form-field__hint" id="{{ hint_id }}">{{ f.description }}</p>
+  {% endif %}
+
+  {% if has_error %}
+  <p class="form-field__error" id="{{ error_id }}" role="alert">
+    {{ f.errors | join('；') }}
+  </p>
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{# 核取方塊。label 放在 input 之後（視覺與語意皆正確）。 #}
+{% macro checkbox(f, full=false) %}
+<div class="form-field {% if full %}form-field--full{% endif %}">
+  <div class="checkbox-field">
+    {{ f(**{'aria-describedby': f.id ~ '-hint'} if f.description else {}) }}
+    {{ f.label }}
+  </div>
+  {% if f.description %}
+  <p class="form-field__hint" id="{{ f.id }}-hint">{{ f.description }}</p>
+  {% endif %}
+  {% if f.errors %}
+  <p class="form-field__error" role="alert">{{ f.errors | join('；') }}</p>
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{# 多選清單（成果的關聯成員）。 #}
+{% macro multiselect(f, size=8, full=true) %}
+<div class="form-field {% if full %}form-field--full{% endif %} {% if f.errors %}form-field--has-error{% endif %}">
+  {{ f.label(class='form-field__label') }}
+  {{ f(class='select', size=size, **{'aria-describedby': f.id ~ '-hint'} if f.description else {}) }}
+  {% if f.description %}
+  <p class="form-field__hint" id="{{ f.id }}-hint">{{ f.description }}</p>
+  {% endif %}
+  {% if f.errors %}
+  <p class="form-field__error" role="alert">{{ f.errors | join('；') }}</p>
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{#
+  發布狀態徽章。
+  文字 + 顏色雙重編碼（SAI §17：不以顏色作為唯一訊息）。
+#}
+{% macro status_badge(status) %}
+{% set labels = {'published': '已發布', 'draft': '草稿', 'archived': '已封存'} %}
+<span class="status-badge status-badge--{{ status }}">{{ labels.get(status, status) }}</span>
+{% endmacro %}
+
+
+{#
+  單一動作的 POST 表單（發布 / 封存 / 移除圖片等）。
+
+  參數：
+    action - 目標 URL
+    label  - 按鈕文字
+    form   - ConfirmForm 實例（提供 CSRF token）
+    css    - 按鈕樣式
+    confirm- 若提供，瀏覽器原生 confirm 對話框的訊息
+
+  為什麼用 POST 而非連結：
+    這些都是 state-changing 操作，必須有 CSRF token
+    （SAI §11.1）。GET 連結可被第三方以 <img> 觸發。
+
+  confirm 使用 HTML 的 formnovalidate 無關；
+  這裡刻意不使用 JS confirm() —— CSP 禁止 inline script，
+  且 SAI §7.5/§7.6 的「確認」是以獨立表單或說明文字達成，
+  不依賴瀏覽器對話框。
+#}
+{% macro confirm_button(action, label, form, css='btn btn--secondary btn--small', extra_fields={}) %}
+<form class="inline-form" method="post" action="{{ action }}">
+  {{ form.csrf_token }}
+  {% for name, value in extra_fields.items() %}
+  <input type="hidden" name="{{ name }}" value="{{ value }}">
+  {% endfor %}
+  <button class="{{ css }}" type="submit">{{ label }}</button>
+</form>
+{% endmacro %}
+
+
+{#
+  發布驗證結果面板。
+  顯示 PublishValidator 的 errors（阻擋）與 warnings（提醒）。
+  對應 SAI §7.2「Needs attention：內容品質提醒，不阻擋草稿」。
+#}
+{% macro validation_panel(validation) %}
+{% if validation %}
+  {% if validation.errors %}
+  <div class="validation-panel validation-panel--blocked" role="alert">
+    <h3>發布前必須修正（{{ validation.errors | length }} 項）</h3>
+    <ul>
+      {% for issue in validation.errors %}
+      <li>{{ issue.message }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% elif validation.warnings %}
+  <div class="validation-panel validation-panel--warning">
+    <h3>建議補齊（{{ validation.warnings | length }} 項，不影響發布）</h3>
+    <ul>
+      {% for issue in validation.warnings %}
+      <li>{{ issue.message }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% else %}
+  <div class="validation-panel validation-panel--ok">
+    <h3>已通過所有發布門檻檢查</h3>
+  </div>
+  {% endif %}
+{% endif %}
+{% endmacro %}

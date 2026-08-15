@@ -1,0 +1,186 @@
+{#
+============================================================
+NTUST SiPh Lab - Admin Base Template
+
+上下游：
+  blueprints/admin/routes.py -> 各 admin 模板 -> {% extends %} 本檔
+  context processor -> settings / current_year / app_version
+  flask_login -> current_user（側欄顯示與登出）
+
+檔案路徑：app/templates/admin/base.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §7.3）：
+  後台外殼與側選單。選單結構完全對應 SAI §7.3 的
+  管理側選單樹：
+    Dashboard / 研究成員 / 研究成果 / 畢業生 / 網站設定 / 系統
+
+責任邊界（不得做的事）：
+  - 不得在此查詢資料庫（統計數字由 route 傳入）。
+  - 不得在此放置公開站的 SEO metadata（後台一律 noindex）。
+
+安全設計：
+  1. 後台頁面一律 noindex,nofollow —— 即使 robots.txt 已
+     Disallow /admin/，meta robots 是第二道保險。
+  2. 登出使用 POST + CSRF token（見 auth/routes.py 的說明）。
+
+已知限制與禁止事項：
+  1. 禁止在此加入 inline <script>（CSP 不允許）。
+  2. 禁止顯示密碼或 session 相關資訊。
+
+Block：
+  page_title  - 瀏覽器標題與 h1
+  page_desc   - 頁面說明
+  header_actions - 標題列右側動作
+  content     - 主要內容
+
+驗證方式：
+  pytest tests/test_admin.py
+  人工：Tab 鍵走訪側欄與主要表單（AC-16）
+============================================================
+#}
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block page_title %}管理後台{% endblock %} | {{ settings.lab_name_zh }} 管理後台</title>
+
+  {# 後台絕不索引（見檔頭「安全設計 1」） #}
+  <meta name="robots" content="noindex, nofollow">
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+</head>
+<body class="admin-body">
+  <a class="skip-link" href="#admin-main">跳至主要內容</a>
+
+  <div class="admin-shell">
+
+    {# ---------- 側選單（SAI §7.3） ---------- #}
+    <aside class="admin-sidebar">
+      <a class="admin-sidebar__brand" href="{{ url_for('admin.dashboard') }}">
+        {{ settings.lab_name_zh }}
+        <small>Content Management</small>
+      </a>
+
+      <nav aria-label="管理選單">
+        <div class="admin-nav__group">
+          <ul class="admin-nav__list">
+            <li>
+              <a class="admin-nav__link" href="{{ url_for('admin.dashboard') }}"
+                 {% if request.endpoint == 'admin.dashboard' %}aria-current="page"{% endif %}>
+                Dashboard
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <div class="admin-nav__group">
+          <h2 class="admin-nav__heading">內容</h2>
+          <ul class="admin-nav__list">
+            <li>
+              <a class="admin-nav__link" href="{{ url_for('admin.people_list') }}"
+                 {% if request.endpoint and request.endpoint.startswith('admin.person') or request.endpoint == 'admin.people_list' %}aria-current="page"{% endif %}>
+                研究成員
+              </a>
+            </li>
+            <li>
+              <a class="admin-nav__link" href="{{ url_for('admin.research_list') }}"
+                 {% if request.endpoint and request.endpoint.startswith('admin.research') %}aria-current="page"{% endif %}>
+                研究成果
+              </a>
+            </li>
+            <li>
+              <a class="admin-nav__link" href="{{ url_for('admin.alumni_list') }}"
+                 {% if request.endpoint == 'admin.alumni_list' %}aria-current="page"{% endif %}>
+                畢業生
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <div class="admin-nav__group">
+          <h2 class="admin-nav__heading">設定</h2>
+          <ul class="admin-nav__list">
+            <li>
+              <a class="admin-nav__link" href="{{ url_for('admin.settings') }}"
+                 {% if request.endpoint and request.endpoint.startswith('admin.settings') %}aria-current="page"{% endif %}>
+                網站設定
+              </a>
+            </li>
+            <li>
+              <a class="admin-nav__link" href="{{ url_for('admin.system') }}"
+                 {% if request.endpoint == 'admin.system' %}aria-current="page"{% endif %}>
+                系統
+              </a>
+            </li>
+            <li>
+              <a class="admin-nav__link" href="{{ url_for('admin.change_password') }}"
+                 {% if request.endpoint == 'admin.change_password' %}aria-current="page"{% endif %}>
+                修改密碼
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <div class="admin-nav__group">
+          <h2 class="admin-nav__heading">前台</h2>
+          <ul class="admin-nav__list">
+            <li>
+              <a class="admin-nav__link" href="{{ url_for('public.home') }}" target="_blank" rel="noopener">
+                開啟公開網站 ↗
+              </a>
+            </li>
+          </ul>
+        </div>
+      </nav>
+
+      <div class="admin-sidebar__footer">
+        {% if current_user.is_authenticated %}
+        <p style="margin-bottom: var(--space-3);">已登入：{{ current_user.username }}</p>
+        {# 登出使用 POST + CSRF（見 auth/routes.py 的說明） #}
+        <form method="post" action="{{ url_for('auth.logout') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn--secondary btn--small" type="submit" style="width: 100%;">登出</button>
+        </form>
+        {% endif %}
+        <p style="margin-top: var(--space-3);">v{{ app_version }}</p>
+      </div>
+    </aside>
+
+    {# ---------- 主要內容 ---------- #}
+    <main class="admin-main" id="admin-main">
+
+      <div class="admin-header">
+        <div>
+          <h1>{{ self.page_title() }}</h1>
+          {% block page_desc %}{% endblock %}
+        </div>
+        <div>
+          {% block header_actions %}{% endblock %}
+        </div>
+      </div>
+
+      {# ---------- Flash 訊息 ---------- #}
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <ul class="flash-list">
+        {% for category, message in messages %}
+        {% set labels = {'success': '成功', 'error': '錯誤', 'warning': '注意', 'info': '訊息'} %}
+        <li class="flash flash--{{ category if category in labels else 'info' }}" role="status">
+          <span class="flash__label">{{ labels.get(category, '訊息') }}：</span>
+          <span>{{ message }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+
+    </main>
+  </div>
+</body>
+</html>

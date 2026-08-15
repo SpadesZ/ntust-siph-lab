@@ -1,0 +1,253 @@
+{#
+============================================================
+NTUST SiPh Lab - Admin Research Form (新增/編輯)
+
+上下游：
+  blueprints/admin/routes.py::research_new / research_edit -> 本模板
+  ResearchForm -> POST -> ResearchService
+  ConfirmForm -> 發布 / 取消發布 / 封存 / 精選 / 移除主圖
+
+檔案路徑：app/templates/admin/research_form.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §15.2）：
+  欄位分區完全對應 SAI §15.2 的表格：
+    Identity / Summary / Research body / Publication /
+    People / Keywords / Media / Feature / SEO
+
+內容指引（重要）：
+  研究成果詳細頁是 SEO/GEO 最重要的內容單位（SAI §5.3）。
+  因此本表單在每個區塊都提供具體的填寫指引，
+  說明「該寫什麼」而非只給欄位名稱 —— 這直接影響
+  最終頁面能否回答 Problem / Method / Results / Significance。
+
+  同時明確標示禁止事項：不得虛構 DOI、數據或出版狀態
+  （SAI §14.3、skills/siph-lab-seo-geo 的 publish gate）。
+
+已知限制與禁止事項：
+  1. 發布必須通過 PublishValidator。
+  2. 只有已發布的成果才能設為精選（SAI §15.2）。
+  3. 主圖上傳與文字欄位是兩個交易步驟（同人物照片）。
+
+驗證方式：
+  pytest tests/test_admin.py tests/test_research.py
+============================================================
+#}
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import field, checkbox, multiselect, status_badge, confirm_button, validation_panel %}
+
+{% block page_title %}{{ '編輯成果：' ~ output.display_title if output else '新增研究成果' }}{% endblock %}
+
+{% block page_desc %}
+{% if output %}
+<p class="admin-header__desc">
+  公開網址：<code>/research/{{ output.slug }}</code>
+  ・目前狀態：{{ status_badge(output.publish_status) }}
+  {% if output.is_featured %}<span class="status-badge status-badge--featured">精選</span>{% endif %}
+  {% if output.publish_status == 'published' %}
+  ・<a href="{{ url_for('public.research_detail', slug=output.slug) }}" target="_blank" rel="noopener">前台檢視 ↗</a>
+  {% endif %}
+</p>
+{% else %}
+<p class="admin-header__desc">
+  新成果預設儲存為草稿。研究成果頁是本網站最重要的內容單位，
+  請盡量填寫完整的問題、方法、結果與意義。
+</p>
+{% endif %}
+{% endblock %}
+
+{% block header_actions %}
+<a class="btn btn--secondary btn--small" href="{{ url_for('admin.research_list') }}">← 返回列表</a>
+{% endblock %}
+
+{% block content %}
+
+{% if output %}
+{{ validation_panel(validation) }}
+{% endif %}
+
+<form class="admin-form" method="post" enctype="multipart/form-data"
+      action="{{ url_for('admin.research_edit', output_id=output.id) if output else url_for('admin.research_new') }}">
+  {{ form.csrf_token }}
+
+  {# ---------- Identity ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">基本資訊</legend>
+    <p class="form-section__hint">
+      標題至少需填寫一個語言版本。slug 留空時會由標題自動產生；
+      發布後變更 slug 會自動建立 301 轉址。
+    </p>
+    <div class="form-grid">
+      {{ field(form.output_type, css='select', required=true) }}
+      {{ field(form.year, required=true) }}
+      {{ field(form.publication_date) }}
+      {{ field(form.slug) }}
+      {{ field(form.title_zh, css='textarea', rows=2, full=true) }}
+      {{ field(form.title_en, css='textarea', rows=2, full=true) }}
+    </div>
+  </fieldset>
+
+  {# ---------- Summary ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">摘要</legend>
+    <p class="form-section__hint">
+      約 80-180 字，讓讀者快速理解這項研究做了什麼。
+      建議依序說明：面對什麼問題、用什麼方法、得到什麼結果、有什麼意義。
+      至少需填寫一個語言版本才能發布。
+    </p>
+    <div class="form-grid">
+      {{ field(form.summary_zh, css='textarea', rows=5, full=true) }}
+      {{ field(form.summary_en, css='textarea', rows=5, full=true) }}
+    </div>
+  </fieldset>
+
+  {# ---------- Research body（SAI §5.3 四段式） ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">研究內容</legend>
+    <p class="form-section__hint">
+      這四個欄位會在前台以獨立段落呈現，是本網站最有價值的內容。
+      <strong>結果請寫具體的數值或觀察，不要只寫「效果良好」</strong>（SAI §5.3）。
+      同時請如實說明適用範圍與限制，避免過度宣稱。
+    </p>
+    <div class="form-grid">
+      {{ field(form.problem_zh, css='textarea', rows=4, full=true) }}
+      {{ field(form.method_zh, css='textarea', rows=5, full=true) }}
+      {{ field(form.results_zh, css='textarea', rows=5, full=true) }}
+      {{ field(form.significance_zh, css='textarea', rows=4, full=true) }}
+    </div>
+  </fieldset>
+
+  {# ---------- Publication ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">出版與外部連結</legend>
+    <p class="form-section__hint">
+      <strong>請勿填寫尚未確定的 DOI、期刊名稱或出版狀態。</strong>
+      欄位留空優於填入不正確的資訊 —— 前台會據此輸出結構化資料，
+      不實的內容會損害研究室的可信度（SAI §14.3）。
+      DOI 可貼裸值或完整網址，系統會自動正規化。
+    </p>
+    <div class="form-grid">
+      {{ field(form.venue, full=true) }}
+      {{ field(form.doi) }}
+      {{ field(form.external_url) }}
+      {{ field(form.github_url) }}
+      {{ field(form.dataset_url) }}
+      {{ field(form.authors_display_text, css='textarea', rows=3, full=true) }}
+    </div>
+  </fieldset>
+
+  {# ---------- People & Keywords ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">關聯成員與關鍵字</legend>
+    <p class="form-section__hint">
+      關聯研究室成員後，成果頁與個人頁之間會建立雙向連結。
+      非研究室的共同作者請填在上方的「完整作者列」，不需要建立成員資料。
+    </p>
+    {{ multiselect(form.people) }}
+    <div class="form-grid" style="margin-top: var(--space-5);">
+      {{ field(form.keywords, full=true) }}
+    </div>
+  </fieldset>
+
+  {# ---------- Media ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">主圖</legend>
+    <p class="form-section__hint">
+      建議使用實驗結果圖、量測圖或系統架構圖。
+      已上傳主圖時，替代文字為必填，且應描述圖片傳達的資訊，
+      而非只寫「示意圖」。
+    </p>
+
+    {% if output and output.hero_image_path %}
+    <div class="media-preview" style="margin-bottom: var(--space-5);">
+      <img src="{{ media_url(output.hero_image_path) }}"
+           alt="{{ output.hero_image_alt_zh or '目前主圖' }}">
+      <div>
+        <p class="media-preview__meta">目前檔案：{{ output.hero_image_path }}</p>
+        <div style="margin-top: var(--space-3);">
+          {{ confirm_button(
+              url_for('admin.research_image_delete', output_id=output.id),
+              '移除主圖', confirm_form, 'btn btn--danger btn--small') }}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="form-grid">
+      {{ field(form.hero_image, full=true) }}
+      {{ field(form.hero_image_alt_zh) }}
+      {{ field(form.hero_image_alt_en) }}
+    </div>
+  </fieldset>
+
+  {# ---------- SEO 與排序 ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">SEO 與顯示順序</legend>
+    <p class="form-section__hint">
+      留空時系統會由標題與摘要自動生成（SAI §12.3），通常不需要手動填寫。
+    </p>
+    <div class="form-grid">
+      {{ field(form.seo_title_zh, full=true) }}
+      {{ field(form.seo_description_zh, css='textarea', rows=2, full=true) }}
+      {{ field(form.sort_order) }}
+    </div>
+  </fieldset>
+
+  <div class="action-bar action-bar--sticky">
+    <button class="btn btn--primary" type="submit">{{ '儲存變更' if output else '建立成果' }}</button>
+    <a class="btn btn--secondary" href="{{ url_for('admin.research_list') }}">取消</a>
+    <span class="action-bar__spacer"></span>
+    {% if output %}
+    <span style="font-size: var(--text-xs); color: var(--color-ink-faint);">
+      最後更新：{{ output.updated_at | local_datetime }}
+    </span>
+    {% endif %}
+  </div>
+</form>
+
+{# ---------- 狀態操作 ---------- #}
+{% if output %}
+<section class="admin-panel" aria-labelledby="publish-actions-heading">
+  <h2 class="admin-panel__title" id="publish-actions-heading">發布與精選</h2>
+  <p class="form-section__hint" style="margin-bottom: var(--space-4);">
+    目前狀態：{{ status_badge(output.publish_status) }}
+    {% if output.publish_status != 'published' %}
+    　只有已發布的成果才能設為首頁精選（SAI §15.2）。
+    {% endif %}
+  </p>
+
+  <div style="display: flex; gap: var(--space-3); flex-wrap: wrap;">
+    {% if output.publish_status != 'published' %}
+    {{ confirm_button(
+        url_for('admin.research_publish', output_id=output.id),
+        '發布到前台', confirm_form, 'btn btn--primary btn--small') }}
+    {% else %}
+    {{ confirm_button(
+        url_for('admin.research_unpublish', output_id=output.id),
+        '取消發布（退回草稿）', confirm_form, 'btn btn--secondary btn--small') }}
+
+    {% if output.is_featured %}
+    {{ confirm_button(
+        url_for('admin.research_feature', output_id=output.id),
+        '取消首頁精選', confirm_form, 'btn btn--secondary btn--small', {'featured': '0'}) }}
+    {% else %}
+    {{ confirm_button(
+        url_for('admin.research_feature', output_id=output.id),
+        '設為首頁精選', confirm_form, 'btn btn--secondary btn--small', {'featured': '1'}) }}
+    {% endif %}
+    {% endif %}
+
+    {% if output.publish_status != 'archived' %}
+    {{ confirm_button(
+        url_for('admin.research_archive', output_id=output.id),
+        '封存', confirm_form, 'btn btn--danger btn--small') }}
+    {% endif %}
+  </div>
+
+  <p class="form-field__hint" style="margin-top: var(--space-4);">
+    系統不提供永久刪除。封存後資料完整保留，關聯成員也不會斷裂（SAI §7.6）。
+  </p>
+</section>
+{% endif %}
+
+{% endblock %}

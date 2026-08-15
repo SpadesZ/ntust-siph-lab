@@ -1,0 +1,163 @@
+{#
+============================================================
+NTUST SiPh Lab - Admin People List (/admin/people)
+
+上下游：
+  blueprints/admin/routes.py::people_list() -> 本模板
+  資料：people、active_* 篩選值、confirm_form（CSRF）
+
+檔案路徑：app/templates/admin/people_list.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §7.3）：
+  「研究成員：列表 / 搜尋 / 排序、新增、編輯 / 發布 / 轉為畢業生」
+
+篩選器實作：
+  GET 表單，與公開站的研究成果篩選同一模式 ——
+  結果 URL 可分享、無 JS 依賴、可用瀏覽器上一頁回到前次篩選。
+
+表格欄位選擇理由：
+  管理者在此頁的任務是「找到要編輯的人」與「快速判斷狀態」。
+  因此顯示：姓名、身分、發布狀態、排序值、最後更新。
+  研究焦點等長文不在此顯示 —— 會讓每列高度不一致，
+  破壞掃描效率。
+
+已知限制與禁止事項：
+  1. 列表不提供刪除（SAI §7.6：預設不硬刪，先 archive）。
+  2. 表格在窄螢幕以容器內橫向捲動呈現（.table-wrap），
+     不造成 body 橫向捲動（AC-15）。
+
+驗證方式：
+  pytest tests/test_admin.py::test_people_list_filters
+============================================================
+#}
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import status_badge %}
+
+{% block page_title %}研究成員{% endblock %}
+
+{% block page_desc %}
+<p class="admin-header__desc">
+  管理教授、在學研究生與畢業生。三種身分共用同一份人物資料，
+  在學生畢業時只需變更狀態，個人網址與研究成果關聯都不會改變。
+</p>
+{% endblock %}
+
+{% block header_actions %}
+<a class="btn btn--primary btn--small" href="{{ url_for('admin.person_new') }}">新增成員</a>
+{% endblock %}
+
+{% block content %}
+
+{# ---------- 篩選與搜尋 ---------- #}
+<form class="filter-bar" method="get" action="{{ url_for('admin.people_list') }}"
+      role="search" aria-label="成員篩選">
+
+  <div class="filter-bar__field">
+    <label class="filter-bar__label" for="filter-status">身分</label>
+    <select class="select" id="filter-status" name="status">
+      <option value="">全部身分</option>
+      {% set status_labels = {'faculty': '教授', 'current': '在學研究生', 'alumni': '畢業生'} %}
+      {% for s in person_statuses %}
+      <option value="{{ s }}" {% if active_status == s %}selected{% endif %}>{{ status_labels.get(s, s) }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="filter-bar__field">
+    <label class="filter-bar__label" for="filter-publish">發布狀態</label>
+    <select class="select" id="filter-publish" name="publish_status">
+      <option value="">全部狀態</option>
+      {% set publish_labels = {'published': '已發布', 'draft': '草稿', 'archived': '已封存'} %}
+      {% for s in publish_statuses %}
+      <option value="{{ s }}" {% if active_publish_status == s %}selected{% endif %}>{{ publish_labels.get(s, s) }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="filter-bar__field" style="flex: 1; min-width: 200px;">
+    <label class="filter-bar__label" for="filter-q">搜尋</label>
+    <input class="input" type="search" id="filter-q" name="q"
+           value="{{ active_query or '' }}" placeholder="姓名或 slug">
+  </div>
+
+  <div class="filter-bar__field">
+    <button class="btn btn--primary" type="submit">套用</button>
+  </div>
+
+  {% if active_status or active_publish_status or active_query %}
+  <div class="filter-bar__field">
+    <a class="btn btn--ghost" href="{{ url_for('admin.people_list') }}">清除</a>
+  </div>
+  {% endif %}
+</form>
+
+{# ---------- 列表 ---------- #}
+<div class="table-wrap">
+  {% if people %}
+  <table class="data-table">
+    <caption class="sr-only">研究成員列表，共 {{ people | length }} 筆</caption>
+    <thead>
+      <tr>
+        <th scope="col">姓名</th>
+        <th scope="col">身分</th>
+        <th scope="col">狀態</th>
+        <th scope="col">排序</th>
+        <th scope="col">最後更新</th>
+        <th scope="col">操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% set status_labels = {'faculty': '教授', 'current': '在學研究生', 'alumni': '畢業生'} %}
+      {% for person in people %}
+      <tr>
+        <td>
+          <a class="data-table__title" href="{{ url_for('admin.person_edit', person_id=person.id) }}">
+            {{ person.name_zh }}
+          </a>
+          <span class="data-table__sub">
+            {% if person.name_en %}{{ person.name_en }} · {% endif %}/people/{{ person.slug }}
+          </span>
+        </td>
+        <td>
+          {{ status_labels.get(person.status, person.status) }}
+          {% if person.graduation_year %}
+          <span class="data-table__sub">{{ person.graduation_year }} 年畢業</span>
+          {% endif %}
+        </td>
+        <td>
+          {{ status_badge(person.publish_status) }}
+          {% if person.legacy_pending_detail %}
+          <span class="data-table__sub">母站遷入・待補欄位</span>
+          {% endif %}
+        </td>
+        <td style="font-family: var(--font-mono);">{{ person.sort_order }}</td>
+        <td style="white-space: nowrap; font-size: var(--text-xs); color: var(--color-ink-faint);">
+          {{ person.updated_at | local_date }}
+        </td>
+        <td>
+          <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
+            <a class="btn btn--secondary btn--small"
+               href="{{ url_for('admin.person_edit', person_id=person.id) }}">編輯</a>
+            {% if person.publish_status == 'published' %}
+            <a class="btn btn--ghost btn--small" target="_blank" rel="noopener"
+               href="{{ url_for('public.person_detail', slug=person.slug) }}">前台檢視 ↗</a>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="table-empty">
+    {% if active_status or active_publish_status or active_query %}
+    沒有符合條件的成員。<a href="{{ url_for('admin.people_list') }}">清除篩選</a>
+    {% else %}
+    尚未建立任何成員。<a href="{{ url_for('admin.person_new') }}">立即新增</a>
+    {% endif %}
+  </p>
+  {% endif %}
+</div>
+
+{% endblock %}

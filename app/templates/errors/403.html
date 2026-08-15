@@ -1,0 +1,19 @@
+{#
+============================================================
+NTUST SiPh Lab - 403 Forbidden
+檔案路徑：app/templates/errors/403.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位：
+  權限不足。管理後台的未登入存取由 Flask-Login 轉址到
+  /admin/login（AC-01），因此走到 403 的情況是
+  「已登入但操作不被允許」或 CSRF 以外的驗證失敗。
+============================================================
+#}
+{% extends "errors/_layout.html" %}
+{% block error_code %}403{% endblock %}
+{% block error_title %}沒有存取權限{% endblock %}
+{% block error_body %}
+<p>您沒有存取此頁面的權限。</p>
+<p>若您是研究室管理者，請先登入管理後台後再操作。</p>
+{% endblock %}

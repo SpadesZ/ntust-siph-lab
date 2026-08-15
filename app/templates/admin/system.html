@@ -1,0 +1,182 @@
+{#
+============================================================
+NTUST SiPh Lab - Admin System Page (/admin/system)
+
+上下游：
+  blueprints/admin/routes.py::system() -> 本模板
+  資料：health、last_backup、security_events、redirect_count
+
+檔案路徑：app/templates/admin/system.html
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位（SAI §7.3 系統選單）：
+  「修改管理員密碼 / 備份狀態 / 登出」
+  加上 §11.2 要求的安全事件稽核檢視。
+
+安全事件區塊的用途（SAI §11.2）：
+  Brute force 的對策是「rate limit + 強密碼 + audit」。
+  前兩者由系統自動執行，「audit」需要管理者能實際看到 ——
+  本區塊即是那個介面。連續的登入失敗紀錄可讓管理者
+  判斷是否遭遇攻擊。
+
+  IP 以雜湊呈現（見 models/audit_log.py 的隱私設計）：
+  管理者仍可看出「是否為同一來源的連續失敗」，
+  但系統不保存可還原的個資。
+
+已知限制與禁止事項：
+  1. 禁止顯示密碼、session token 或 SECRET_KEY。
+  2. 稽核紀錄唯讀，不提供刪除介面
+     （models/audit_log.py 的維護契約）。
+
+驗證方式：
+  pytest tests/test_admin.py::test_system_page_renders
+============================================================
+#}
+{% extends "admin/base.html" %}
+
+{% block page_title %}系統{% endblock %}
+
+{% block page_desc %}
+<p class="admin-header__desc">
+  系統健康狀態、備份紀錄與安全事件。這些資訊只有管理員可以看到。
+</p>
+{% endblock %}
+
+{% block header_actions %}
+<a class="btn btn--secondary btn--small" href="{{ url_for('admin.change_password') }}">修改密碼</a>
+{% endblock %}
+
+{% block content %}
+
+{# ---------- 健康檢查 ---------- #}
+<section class="admin-panel" aria-labelledby="health-heading">
+  <h2 class="admin-panel__title" id="health-heading">系統健康狀態</h2>
+  <ul class="health-list">
+    {% for item in health %}
+    <li>
+      <span class="health-status {% if item.ok %}health-status--ok{% else %}health-status--fail{% endif %}">
+        {{ '正常' if item.ok else '異常' }}
+      </span>
+      <span class="health-name">{{ item.name }}</span>
+      <span class="health-detail">{{ item.detail }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+
+{# ---------- 備份（SAI §10.6） ---------- #}
+<section class="admin-panel" aria-labelledby="backup-heading">
+  <h2 class="admin-panel__title" id="backup-heading">備份</h2>
+
+  {% if last_backup %}
+  <ul class="health-list">
+    <li>
+      <span class="health-status health-status--ok">最新</span>
+      <span class="health-name">{{ last_backup.name }}</span>
+      <span class="health-detail">
+        建立於 {{ last_backup.created_at | local_datetime }}
+        ・{{ last_backup.size // 1024 }} KB
+      </span>
+    </li>
+  </ul>
+  {% else %}
+  <p style="color: var(--color-warning); margin-bottom: var(--space-4);">
+    尚未找到任何備份檔。
+  </p>
+  {% endif %}
+
+  <p class="form-field__hint" style="margin-top: var(--space-4);">
+    備份需在伺服器端執行，會同時包含資料庫與已上傳的圖片，並產生
+    checksum 清單：
+  </p>
+  <p style="margin-top: var(--space-2);">
+    <code>python scripts/backup_sqlite.py</code>
+  </p>
+  <p class="form-field__hint" style="margin-top: var(--space-3);">
+    還原演練請執行 <code>python scripts/backup_sqlite.py --verify-latest</code>，
+    它會在暫存目錄還原並執行完整性檢查（SAI §10.6、AC-14）。
+  </p>
+</section>
+
+{# ---------- 轉址紀錄 ---------- #}
+<section class="admin-panel" aria-labelledby="redirect-heading">
+  <h2 class="admin-panel__title" id="redirect-heading">網址轉址</h2>
+  <p style="color: var(--color-ink-soft);">
+    目前有 <strong>{{ redirect_count }}</strong> 筆 301 轉址紀錄。
+  </p>
+  <p class="form-field__hint" style="margin-top: var(--space-3);">
+    當已發布內容的網址（slug）變更時，系統會自動建立轉址，
+    確保舊連結與搜尋結果不會失效（SAI §4.2）。此紀錄由系統維護，
+    不需要手動編輯。
+  </p>
+</section>
+
+{# ---------- 安全事件（SAI §11.2 audit） ---------- #}
+<section class="admin-panel" aria-labelledby="security-heading">
+  <h2 class="admin-panel__title" id="security-heading">最近的安全事件</h2>
+
+  {% if security_events %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <caption class="sr-only">最近的登入與密碼相關事件</caption>
+      <thead>
+        <tr>
+          <th scope="col">時間</th>
+          <th scope="col">事件</th>
+          <th scope="col">說明</th>
+          <th scope="col">來源識別</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set action_labels = {
+          'login': '登入成功',
+          'login_failed': '登入失敗',
+          'logout': '登出',
+          'password_change': '密碼變更'
+        } %}
+        {% for event in security_events %}
+        <tr>
+          <td style="white-space: nowrap; font-family: var(--font-mono); font-size: var(--text-xs);">
+            {{ event.created_at | local_datetime }}
+          </td>
+          <td>
+            {% if event.action == 'login_failed' %}
+            <span class="severity severity--warning">{{ action_labels.get(event.action) }}</span>
+            {% else %}
+            {{ action_labels.get(event.action, event.action) }}
+            {% endif %}
+          </td>
+          <td>{{ event.summary }}</td>
+          <td style="font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-ink-faint);">
+            {{ event.ip_hash[:12] if event.ip_hash else '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="form-field__hint" style="margin-top: var(--space-4);">
+    「來源識別」是來源位址的不可逆雜湊值，用於判斷是否為同一來源的連續嘗試；
+    系統不保存原始 IP 位址（SAI §8.8 隱私設計）。
+    若看到大量來自同一識別碼的登入失敗，表示可能有人正在嘗試猜測密碼；
+    系統已自動啟用頻率限制，但建議一併更換為更強的密碼。
+  </p>
+  {% else %}
+  <p style="color: var(--color-ink-soft);">尚無安全事件紀錄。</p>
+  {% endif %}
+</section>
+
+{# ---------- 登出 ---------- #}
+<section class="admin-panel" aria-labelledby="logout-heading">
+  <h2 class="admin-panel__title" id="logout-heading">結束工作階段</h2>
+  <form method="post" action="{{ url_for('auth.logout') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn--secondary" type="submit">登出管理後台</button>
+  </form>
+  <p class="form-field__hint" style="margin-top: var(--space-3);">
+    工作階段會在 8 小時後自動失效（SAI §11.1）。
+  </p>
+</section>
+
+{% endblock %}

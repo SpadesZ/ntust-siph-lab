@@ -1,0 +1,244 @@
+{#
+============================================================
+NTUST SiPh Lab - Public Base Template
+
+上下游：
+  blueprints/public/routes.py -> render_template(..., meta=PageMeta,
+      structured_data=dict) -> 本模板 -> 各頁 {% extends %}
+  app/__init__.py context processor -> settings / current_year
+  app/__init__.py template globals -> media_url() / json_ld()
+
+檔案路徑：
+  app/templates/public/base.html
+
+建立日期：2026-08-14 / 版本：v1.0
+
+模組定位與責任邊界：
+  所有公開頁的 HTML 外殼。集中處理 SAI §12.1 要求的
+  「每頁都必須有」的元素：唯一 title、meta description、
+  canonical、Open Graph、semantic HTML landmarks、
+  以及 §12.2 的 JSON-LD。
+
+  責任邊界（不得做的事）：
+    - 不得在此做資料查詢（SAI §9.1：Jinja 不做複雜 query）。
+    - 不得在此組 SEO 字串（一律由 SEOService 傳入 meta）。
+    - 子模板不得覆寫 <head> 的 SEO 區塊，只能透過 meta 物件。
+
+輸入 -> 輸出：
+  meta（PageMeta）、structured_data（dict）、settings
+    -> 完整 HTML 文件（SSR，首個 response 即含全部內容，ADR-001）
+
+Block 清單（子模板可覆寫）：
+  breadcrumb  - 麵包屑（預設由 meta.breadcrumbs 自動產生）
+  content     - 主要內容（必填）
+  extra_head  - 額外 head 內容（謹慎使用）
+
+依賴：
+  static/css/tokens.css、static/css/main.css
+
+Semantic HTML（SAI §12.1、§17）：
+  header / nav / main / article / section / footer 皆有使用；
+  每頁只有一個 <h1>（由子模板提供，AC-18）。
+
+已知限制與禁止事項：
+  1. 禁止在此加入 inline <script>（CSP 不允許 script inline，
+     見 app/__init__.py 的 security headers）。
+  2. 禁止在前台放「Admin Login」連結（SAI §7.1：
+     不放連結，但不得把這當作安全機制）。
+  3. 禁止輸出頁面看不到的 structured data（AC-17）——
+     JSON-LD 由 SchemaService 保證，此處只負責序列化。
+
+維護契約：
+  新增 <head> 的 SEO 元素時，必須同時更新 SEOService.PageMeta
+  與 tests/test_seo.py，否則會出現「部分頁面有、部分沒有」。
+
+驗證方式：
+  pytest tests/test_seo.py
+  人工：檢視原始碼確認 canonical / og / JSON-LD 齊全
+============================================================
+#}
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  {# --- SAI §12.1 Technical SEO：每頁唯一 title 與 description --- #}
+  <title>{{ meta.title }}</title>
+  <meta name="description" content="{{ meta.description }}">
+
+  {# canonical 由 server 產生 absolute URL（SAI §12.1） #}
+  <link rel="canonical" href="{{ meta.canonical }}">
+
+  {% if meta.noindex %}
+  <meta name="robots" content="noindex, nofollow">
+  {% endif %}
+
+  {# --- Open Graph（SAI §12.1） --- #}
+  <meta property="og:type" content="{{ meta.og_type }}">
+  <meta property="og:title" content="{{ meta.title }}">
+  <meta property="og:description" content="{{ meta.description }}">
+  <meta property="og:url" content="{{ meta.canonical }}">
+  <meta property="og:site_name" content="{{ settings.lab_name_zh }}">
+  <meta property="og:locale" content="zh_TW">
+  {% if meta.og_image %}
+  <meta property="og:image" content="{{ meta.og_image }}">
+  {% endif %}
+
+  <meta name="twitter:card" content="{{ 'summary_large_image' if meta.og_image else 'summary' }}">
+
+  {# --- 樣式 --- #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+
+  {% if settings.logo_path %}
+  <link rel="icon" href="{{ media_url(settings.logo_path) }}">
+  {% endif %}
+
+  {# --- JSON-LD（SAI §12.2；內容必須與可見內容一致 [S7]） --- #}
+  {% if structured_data %}
+  <script type="application/ld+json">{{ json_ld(structured_data) }}</script>
+  {% endif %}
+
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  {# 鍵盤使用者的第一個可聚焦元素（SAI §17、AC-18） #}
+  <a class="skip-link" href="#main-content">跳至主要內容</a>
+
+  <header class="site-header">
+    <div class="container site-header__inner">
+      <a class="site-brand" href="{{ url_for('public.home') }}">
+        {% if settings.logo_path %}
+        <img class="site-brand__logo" src="{{ media_url(settings.logo_path) }}"
+             alt="{{ settings.lab_name_zh }} 標誌" width="36" height="36">
+        {% endif %}
+        <span class="site-brand__text">
+          <span class="site-brand__zh">{{ settings.lab_name_zh }}</span>
+          {% if settings.lab_name_en and settings.lab_name_en != settings.lab_name_zh %}
+          <span class="site-brand__en">{{ settings.lab_name_en }}</span>
+          {% endif %}
+        </span>
+      </a>
+
+      {#
+        主導覽。
+
+        設計決策：不使用展開式選單（漢堡選單 / <details>）。
+        理由：
+          1. 只有 6 個短標籤，在 320px 寬度下換行成兩列即可完整顯示，
+             不需要任何開合機制。
+          2. 展開式選單若以 <details> 實作，桌機版必須用 CSS 讓
+             內容在關閉狀態下仍顯示，各瀏覽器對此行為不一致
+             （實測曾導致桌機版連結完全不可見）。
+          3. 若改以 JavaScript 實作，就違反了「首屏不依賴 JS」
+             （SAI §18）與「功能不應完全依賴 JS」的原則。
+        全部連結永遠在 DOM 中且可直接 Tab 到達（AC-16、AC-18）。
+      #}
+      <nav class="site-nav" aria-label="主導覽">
+        <ul class="site-nav__list">
+          {% set nav_items = [
+            ('public.home', '首頁'),
+            ('public.about', '關於'),
+            ('public.members', '研究成員'),
+            ('public.research_index', '研究成果'),
+            ('public.alumni', '畢業生'),
+            ('public.join', '加入我們')
+          ] %}
+          {% for endpoint, label in nav_items %}
+          <li>
+            <a class="site-nav__link" href="{{ url_for(endpoint) }}"
+               {% if request.endpoint == endpoint %}aria-current="page"{% endif %}>
+              {{ label }}
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  {#
+    麵包屑：與 BreadcrumbList JSON-LD 使用同一份 meta.breadcrumbs 資料，
+    確保 structured data 與可見內容一致（SAI §12.2 [S7]、AC-17）。
+  #}
+  {% block breadcrumb %}
+  {% if meta.breadcrumbs %}
+  <nav class="breadcrumb container" aria-label="麵包屑">
+    <ol>
+      {% for label, url in meta.breadcrumbs %}
+      <li><a href="{{ url }}">{{ label }}</a></li>
+      {% endfor %}
+      {#
+        當前頁名稱。子模板覆寫此 block 以提供更精確的名稱
+        （例如人物姓名、成果標題）；預設取 title 去除站台後綴。
+      #}
+      <li aria-current="page">{% block breadcrumb_current %}{{ meta.title.split(' | ')[0] }}{% endblock %}</li>
+    </ol>
+  </nav>
+  {% endif %}
+  {% endblock %}
+
+  <main id="main-content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="site-footer__grid">
+        <div>
+          <h2 class="site-footer__heading">{{ settings.lab_name_zh }}</h2>
+          {% if settings.university_zh or settings.department_zh %}
+          <p>
+            {{ settings.university_zh or '' }}
+            {% if settings.department_zh %}<br>{{ settings.department_zh }}{% endif %}
+          </p>
+          {% endif %}
+          {% if settings.address_zh %}
+          <p>{{ settings.address_zh }}</p>
+          {% endif %}
+        </div>
+
+        <div>
+          <h2 class="site-footer__heading">網站導覽</h2>
+          <ul class="site-footer__list">
+            <li><a href="{{ url_for('public.about') }}">關於研究室</a></li>
+            <li><a href="{{ url_for('public.members') }}">研究成員</a></li>
+            <li><a href="{{ url_for('public.research_index') }}">研究成果</a></li>
+            <li><a href="{{ url_for('public.alumni') }}">畢業生</a></li>
+            <li><a href="{{ url_for('public.join') }}">加入我們</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h2 class="site-footer__heading">聯絡與連結</h2>
+          <ul class="site-footer__list">
+            {% if settings.contact_email %}
+            <li><a href="mailto:{{ settings.contact_email }}">{{ settings.contact_email }}</a></li>
+            {% endif %}
+            {% if settings.official_ntust_url %}
+            <li>
+              <a href="{{ settings.official_ntust_url }}" rel="noopener">NTUST 官方頁面</a>
+            </li>
+            {% endif %}
+            {#
+              社群/外部連結同時是 Organization.sameAs 的來源。
+              兩者必須一致，否則違反 SAI §12.2 [S7]。
+            #}
+            {% for link in settings.social_links %}
+            <li><a href="{{ link.url }}" rel="noopener">{{ link.label }}</a></li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+      <div class="site-footer__bottom">
+        <p>&copy; {{ current_year }} {{ settings.lab_name_zh }}. All rights reserved.</p>
+        <p>
+          <a href="{{ url_for('public.sitemap_xml') }}">Sitemap</a>
+        </p>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
