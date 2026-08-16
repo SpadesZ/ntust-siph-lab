@@ -437,16 +437,29 @@ def text_lang(value) -> str | None:
 
 
 def lang_url(target_lang: str) -> str:
-    """產生「切換到 target_lang」的網址，保留當前路徑與其他查詢參數。"""
+    """產生「切換到 target_lang」的網址，保留當前路徑與其他查詢參數。
+
+    **兩種語言都必須帶上 ?lang 參數，包含預設的中文。**
+
+    前一版對中文刻意不帶參數（「中文是預設，網址乾淨一點」），
+    結果那個連結完全沒有作用：語言優先序是 網址參數 > session > 預設，
+    使用者切到英文後 session 記著 en，「中文」連結指向不帶參數的
+    同一個網址，伺服器讀不到參數就回頭看 session，於是再次渲染英文。
+    按幾次都一樣。
+
+    只要 session 會記住語言，唯一能覆蓋它的就是明確的網址參數 ——
+    「乾淨網址」與「切得回去」兩者不可兼得，後者才是這個元件存在的理由。
+
+    ?lang=zh 不會污染 SEO：canonical 一律不含 query string
+    （見 seo_service 檔頭），而導覽列在中文模式下本來就不帶參數，
+    因此這個參數只會在按下切換的那一次出現在網址列。
+    """
     args = request.args.to_dict(flat=True)
-    if target_lang == DEFAULT_LANG:
-        args.pop("lang", None)          # 中文是預設，網址不帶參數
-    else:
-        args["lang"] = target_lang
+    args["lang"] = target_lang
     try:
         return url_for(request.endpoint, **{**(request.view_args or {}), **args})
     except Exception:  # noqa: BLE001 - 例如錯誤頁沒有 endpoint
-        return "/?lang=" + target_lang if target_lang != DEFAULT_LANG else "/"
+        return f"/?lang={target_lang}"
 
 
 def init_i18n(app) -> None:

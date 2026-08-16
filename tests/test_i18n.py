@@ -310,13 +310,54 @@ def test_language_switch_preserves_query_parameters(client):
     assert "type=conference" in href
 
 
-def test_switching_back_to_chinese_drops_the_parameter(client):
-    """中文是預設語言，網址不該留下 ?lang=zh 這種贅字。"""
-    soup = _soup(client, "/?lang=en")
-    href = soup.select_one("a.lang-switch__item")["href"]
+@pytest.mark.parametrize("path", PUBLIC_PATHS)
+def test_following_the_switch_actually_changes_language(client, path):
+    """**跟著連結走**，語言必須真的改變 —— 兩個方向都要。
 
-    assert "lang" not in href
-    assert href in ("/", "/?")
+    這是使用者實際回報的缺陷，而且是我原本測不到的那一類：
+
+      前一版 lang_url() 對中文刻意不帶參數（「中文是預設，網址乾淨」）。
+      語言優先序是 網址參數 > session > 預設，所以使用者切到英文後
+      session 記著 en，「中文」連結指向不帶參數的同一個網址，
+      伺服器讀不到參數就回頭看 session，於是再次渲染英文。按幾次都一樣。
+
+    原本的測試只斷言「href 不含 lang 參數」—— 那是在驗證我寫的機制，
+    不是在驗證使用者的動線。href 完全符合預期，功能卻是壞的。
+    所以這個測試改成真的把連結走一遍。
+    """
+    # 中文 -> 英文
+    zh_page = _soup(client, path)
+    assert zh_page.html["lang"] == HTML_LANG["zh"]
+    to_en = zh_page.select_one("a.lang-switch__item")["href"]
+
+    en_page = _soup(client, to_en)
+    assert en_page.html["lang"] == HTML_LANG["en"], (
+        f"{path}：按下切換後仍不是英文（連結為 {to_en}）"
+    )
+
+    # 英文 -> 中文。關鍵在於這一步「不重新指定網址」，
+    # 而是照使用者的做法：從英文頁面上的連結走回去。
+    to_zh = en_page.select_one("a.lang-switch__item")["href"]
+    back = _soup(client, to_zh)
+    assert back.html["lang"] == HTML_LANG["zh"], (
+        f"{path}：從英文按「中文」切不回去（連結為 {to_zh}）"
+    )
+
+
+def test_switch_link_survives_session_memory(client):
+    """瀏覽幾頁之後再切換，仍然要有效。
+
+    session 記住語言是刻意的（一鍵切換的意思是按一次就好），
+    但那也正是上述缺陷的成因 —— 記住的偏好會蓋掉不帶參數的連結。
+    這裡模擬真實使用：切英文、逛兩頁、再切回中文。
+    """
+    client.get("/?lang=en")
+    _soup(client, "/members")
+    soup = _soup(client, "/research")
+    assert soup.html["lang"] == HTML_LANG["en"]
+
+    to_zh = soup.select_one("a.lang-switch__item")["href"]
+    assert _soup(client, to_zh).html["lang"] == HTML_LANG["zh"]
 
 
 @pytest.mark.parametrize(
