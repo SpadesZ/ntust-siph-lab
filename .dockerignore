@@ -34,6 +34,13 @@ backups/
 *.db-wal
 *.db-shm
 
+# --- 遷移產出（scripts/export_sqlite.py 的輸出，見 deploy/cloudrun.md §4）---
+# 含管理員密碼雜湊與稽核紀錄。Dockerfile 目前逐一 COPY 指定目錄，
+# 不會把它帶進 image，但仍會被上傳到 Cloud Build 的暫存 bucket，
+# 沒有理由讓它離開本機。
+migration-package/
+media-sync-report.csv
+
 # --- Python 開發產物 ---
 .venv/
 venv/
