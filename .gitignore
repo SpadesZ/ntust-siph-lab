@@ -39,6 +39,12 @@ backups/
 *.db-wal
 *.db-shm
 
+# --- 遷移產出（scripts/export_sqlite.py 的輸出，見 deploy/cloudrun.md §4）---
+# tables/admin_users.json 含管理員密碼雜湊、audit_logs.json 含稽核紀錄，
+# 屬於資料庫內容的完整轉存，絕不進入版控。
+migration-package/
+media-sync-report.csv
+
 # --- Python ---
 .venv/
 venv/
