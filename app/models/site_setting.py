@@ -155,6 +155,11 @@ class SiteSetting(TimestampMixin, db.Model):
     # About（SAI §4.1 /about：教授、Lab、研究方向與設備/方法概覽）
     # ------------------------------------------------------------------
     about_intro_zh: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: /about 導言的英文版。
+    #:
+    #: 沒有這個欄位時，/about 的英文 meta description 會回退到站台
+    #: 預設，結果與首頁一模一樣（SAI §12.1 要求每頁描述不重複）。
+    about_intro_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     about_methods_zh: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ------------------------------------------------------------------

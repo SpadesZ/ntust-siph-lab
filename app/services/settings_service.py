@@ -136,6 +136,7 @@ class SettingsService:
 
         # --- About ---
         setting.about_intro_zh = normalize_multiline(data.get("about_intro_zh"))
+        setting.about_intro_en = normalize_multiline(data.get("about_intro_en"))
         setting.about_methods_zh = normalize_multiline(data.get("about_methods_zh"))
 
         # --- Join & Contact ---

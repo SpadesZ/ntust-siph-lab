@@ -3,7 +3,7 @@
 > 本檔由 `python scripts/verify_migration.py` 自動產生，請勿手動編輯。
 > 手動修改會與實際驗證結果脫節，違反 ADR-011 的證據鏈要求。
 
-- 產生時間：2026-08-16T02:40:18.686210+08:00
+- 產生時間：2026-08-16T23:17:00.451824+08:00
 - 母站來源：https://sites.google.com/view/ntust-siph-lab/
 - 盤點時間：2026-08-15T00:00:00+08:00
 - Inventory 總筆數：19
@@ -76,7 +76,7 @@
 通過 3 項：
 
 - LC-002 原始資產 checksum 相符（1d46458f9eace22e…，40847 bytes）
-- LC-002：照片已存在於 storage（local），object key=people/715eb8e46a514e629f75e9e8e11eaf70.jpg
+- LC-002：照片已存在於 storage（local），object key=people/67f1d4a69b5844b1842adf80c9862413.jpg
 - LC-002：照片替代文字已設定（楊淳良副教授照片）
 
 ### ✅ AC-25 — 平台元素排除與 embed 決策

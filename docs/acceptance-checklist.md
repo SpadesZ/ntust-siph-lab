@@ -444,10 +444,36 @@ description 是全站唯一「回退到另一種語言等於失效」的欄位�
 四頁加首頁共五頁描述完全相同，違反 SAI §12.1「每頁描述不重複」。
 現在每人是「姓名，職稱，研究室，學校」，各自不同。
 
-**仍未解決**：`/` 與 `/about` 的描述相同（中英文皆是，中文版為既有問題）。
-根因是 `hero_intro_en` 與 `about_intro_zh` 兩個欄位都空著 ——
-兩者在後台都有欄位（設定 → 首頁導言（英）／關於研究室內容），
-填了就會自動生效，不需要改程式。這是內容缺口，不代寫（SAI §2.3）。
+### 編輯文案補齊（2026-08-16 補）
+
+前一節的「`/` 與 `/about` 描述相同」已解決。九頁的描述在中英文皆為
+**8 種 / 9 頁**，唯一重複已消除。
+
+- 新增 `about_intro_en` 欄位（migration `16bde59ce22f`）。
+  `site_settings` 的敘述型欄位中只有 `about_intro` 缺英文版，
+  少了它，`/about` 的英文描述會回退站台預設而與首頁相同。
+- 新增 `scripts/seed_editorial.py` + `flask seed editorial`。
+
+**為什麼需要第三支 seed**：`hero_intro_zh` 與 `default_description_zh`
+早就顯示在正式頁面上，卻**只存在於 `instance/siph_lab.db`** ——
+沒有進版控、正式站沒有、重建資料庫就消失、也沒有任何地方記載依據。
+編輯文案和論文書目一樣屬於「應該可重現」的內容，因此比照
+`seed_publications.py` 獨立成一支，不混入母站證據鏈
+（那會讓人再也分不清哪句話有母站依據）。
+
+五則文案的核准紀錄見 `legacy/google_sites/content_signoff.md` §2.4，
+狀態為 **`APPROVED_REWRITE`（待核准）** —— 核准欄位空白，
+依 ADR-011 不由 Agent 代填。
+
+> **過程中我自己造成過一次資料遺失**：`run_seed` 第一版只把三個要改的
+> key 傳給 `SettingsService.update()`，但那個 API 是給後台表單用的
+> 「整份覆寫」，沒帶到的欄位會被寫成 `None` ——
+> 一次清空 `university_zh/en`、`contact_email`、`official_ntust_url`、
+> `default_title_suffix`、`default_description_zh`、`hero_intro_zh`
+> 共七個欄位。沒有任何例外或警告，是靠改完後重新量測描述才發現的
+> （`/` 的描述從 73 字掉到 14 字）。已由 `seed legacy --force` 與
+> 事前備份完整救回（逐欄比對遺失 0 欄），並由
+> `test_seed_does_not_clear_other_settings` 守住。
 
 ---
 

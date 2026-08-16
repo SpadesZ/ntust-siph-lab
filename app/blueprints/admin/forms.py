@@ -597,6 +597,7 @@ class SiteSettingForm(FlaskForm):
 
     # --- About ---
     about_intro_zh = TextAreaField("關於研究室內容", validators=[Optional()])
+    about_intro_en = TextAreaField("關於研究室內容（英）", validators=[Optional()])
     about_methods_zh = TextAreaField("研究方法與設備概覽", validators=[Optional()])
 
     # --- Join & Contact ---
@@ -659,6 +660,7 @@ class SiteSettingForm(FlaskForm):
             "hero_intro_en": self.hero_intro_en.data,
             "hero_media_alt_zh": self.hero_media_alt_zh.data,
             "about_intro_zh": self.about_intro_zh.data,
+            "about_intro_en": self.about_intro_en.data,
             "about_methods_zh": self.about_methods_zh.data,
             "contact_email": self.contact_email.data,
             "address_zh": self.address_zh.data,
@@ -690,6 +692,7 @@ class SiteSettingForm(FlaskForm):
         self.hero_intro_en.data = setting.hero_intro_en
         self.hero_media_alt_zh.data = setting.hero_media_alt_zh
         self.about_intro_zh.data = setting.about_intro_zh
+        self.about_intro_en.data = setting.about_intro_en
         self.about_methods_zh.data = setting.about_methods_zh
         self.contact_email.data = setting.contact_email
         self.address_zh.data = setting.address_zh
