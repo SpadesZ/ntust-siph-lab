@@ -15,7 +15,7 @@
 | 母站來源 | <https://sites.google.com/view/ntust-siph-lab/> |
 | Inventory 總筆數 | **19**（LC-001 ~ LC-019） |
 | MIGRATED 數 | **18** |
-| APPROVED_REWRITE 數 | **0** |
+| APPROVED_REWRITE 數 | **0**（母站項目）＋ **5 則編輯文案待核准**（§2.4） |
 | APPROVED_REMOVE 數 | **1**（LC-019） |
 | REVIEW_REQUIRED 數 | **0** |
 | **UNRESOLVED 數** | **0** ✅ |
@@ -81,6 +81,44 @@
 | 核准日期 | 2026-08-15 |
 | 理由 | 依 SAI §9.4 目錄樹以 `ntust-siph-lab/` 為專案根目錄，SAI PDF 保留在外層作為規格來源，維持 git repo 邊界乾淨。 |
 
+### 2.4 編輯文案（首頁與 /about 導言）— ⚠️ **待核准**
+
+| 項目 | 內容 |
+| --- | --- |
+| 觸發 | 委託人於 2026-08-16 指示「把 hero_intro_en 跟 about_intro_zh 補上」 |
+| 規格約束 | SAI §2.3：母站不存在的資料不得由 Agent **猜測**填入；新增的句子須記為 `APPROVED_REWRITE` 並載明核准人與日期 |
+| 狀態 | **`APPROVED_REWRITE`（待核准）** |
+| 核准人 | **（待填 — 不得由 Agent 代填，見本檔 §2 的稽核更正與 ADR-011）** |
+| 核准日期 | **（待填）** |
+| 實作位置 | `scripts/seed_editorial.py`，每則文案附逐項 provenance 註解 |
+| 測試 | `tests/test_editorial_seed.py`（13 項） |
+
+**為什麼仍需核准**：這五則都是**新的句子**。雖然每一項主張都能回溯到
+母站或已查證的論文資料（見下表），組句本身仍是 Agent 的行為，
+而它們會顯示在教授的官方頁面上。
+
+| 欄位 | 文案 | 每項主張的依據 |
+| --- | --- | --- |
+| `hero_intro_zh` | 以矽光子與光通訊系統為主軸，研究光訊號的感測、傳輸與效能監視。 | **補登既有值，一字未改。** 由母站 LC-006~011 六項專長歸納 |
+| `hero_intro_en` | Research focused on silicon photonics and optical communication systems… | `hero_intro_zh` 的翻譯，無新主張；術語沿用 `research_focus.title_en` |
+| `default_description_zh` | 國立臺灣科技大學 NTUST SiPh Lab（楊淳良副教授）的研究方向… | **補登既有值，一字未改。** LC-001/003/004/005/006~011 |
+| `about_intro_zh` | 本研究室由楊淳良副教授主持，自 2004 年起持續發表… | 教授身分＝LC-003/004；2004＝已發布成果的最早年份；兩個發表處＝`research_outputs.venue` 的實際值，各有 DOI |
+| `about_intro_en` | Led by Associate Professor Chun-Liang Yang. Published in… | `about_intro_zh` 的翻譯，無新主張 |
+
+`hero_intro_zh` 與 `default_description_zh` **原本就已顯示在正式頁面上**，
+但只存在於 `instance/siph_lab.db`，沒有進版控，也沒有任何核准紀錄 ——
+這是本次一併補登的原因，兩者文字未做任何更動。
+
+**請委託人確認上表五則文字**，確認後填入核准人與日期。
+在此之前，這些文案已依委託人 2026-08-16 的指示寫入資料庫並顯示於前台，
+但核准欄位維持空白，不由 Agent 代填。
+
+> **刻意不寫的內容**：成果篇數與最新年份。靜態文案不會跟著資料庫更新 ——
+> 寫死「9 篇」之後，教授新增第 10 篇時關於頁就開始說謊，而且沒有任何
+> 機制會提醒。`test_about_intro_avoids_counts_that_go_stale` 擋住這件事。
+> 需要即時數字的地方（`/members`、`/research` 的 meta description）
+> 改由 `SEOService` 每次從資料庫現查。
+
 ---
 
 ## 3. 逐項核對表（SAI 附錄 C — Legacy content checklist）
@@ -93,7 +131,7 @@
 | 4 | Google Calendar embed 有明確保留/移除決策 | ✅ | 本檔 §2.1；AC-25 驗證通過 |
 | 5 | Google Sites platform chrome 僅依 exclusion list 排除 | ✅ | `difference_report.md` §4（6 項） |
 | 6 | difference_report 無 UNRESOLVED | ✅ | `difference_report.md` §3 |
-| 7 | 所有 APPROVED_REWRITE / APPROVED_REMOVE 有核准紀錄 | ✅ | 本檔 §2.1（唯一一筆 APPROVED_REMOVE） |
+| 7 | 所有 APPROVED_REWRITE / APPROVED_REMOVE 有核准紀錄 | ⏳ | §2.1 的 APPROVED_REMOVE 已核准；**§2.4 的編輯文案待委託人核准** |
 | 8 | content_signoff 完成後才允許舊站改成搬遷公告 | ⏳ | **待 cutover 時執行**（見 §5） |
 
 ---
