@@ -278,7 +278,10 @@ Preview/limited availability，**不列為本案 production baseline** [S22]。
 
 ## 10. 部署後檢查清單
 
-- [ ] `/healthz` 回 200
+- [ ] `/health` 回 200
+      （**不是** `/healthz` —— `/healthz` 是 Cloud Run 保留路徑，
+      從公開網址會拿到 Google Frontend 的 404，請求不會進到容器。
+      容器內的 probe 與 Dockerfile HEALTHCHECK 仍用 `/healthz`。見 ADR-014）
 - [ ] 首頁、人物頁、成果頁正常
 - [ ] `/admin/login` 可存取，錯誤密碼觸發 rate limit
 - [ ] 圖片從 GCS 正常載入（非 403）
