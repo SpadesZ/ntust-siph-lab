@@ -422,6 +422,84 @@ def test_localized_ignores_whitespace_only_english(app):
     assert tag == HTML_LANG["zh"]
 
 
+def _description(client, path):
+    tag = _soup(client, path).find("meta", attrs={"name": "description"})
+    assert tag is not None, f"{path} 沒有 meta description（SAI §12.1 每頁必備）"
+    return tag["content"]
+
+
+@pytest.mark.parametrize("path", PUBLIC_PATHS)
+def test_english_description_is_actually_english(client, populated, path):
+    """英文頁的 meta description 不得是中文。
+
+    這是全站唯一「回退到另一種語言等於失效」的欄位。
+    description 不出現在頁面上，只出現在搜尋結果與分享預覽，
+    唯一用途是告訴讀者這頁是什麼；放一段讀者看不懂的語言進去，
+    這個用途就完全失效 —— 那不是誠實，只是沒用。
+    因此 SEOService._desc_chain 刻意不跨語言回退，
+    取不到英文來源時改用「以事實組成的英文句」。
+    """
+    description = _description(client, f"{path}?lang=en")
+
+    assert description.strip(), f"{path} 的英文描述是空的"
+    assert not CJK_RE.search(description), (
+        f"{path} 的英文 meta description 仍是中文：{description!r}"
+    )
+
+
+def test_english_person_description_may_only_contain_the_name_in_chinese(
+    client, sample_person
+):
+    """人物頁的英文描述只允許姓名是中文 —— 姓名是專有名詞。
+
+    多數學生沒有 name_en。用中文姓名仍指得出這是誰的頁面；
+    若因為「不能有中文」就退回純機構名，四位學生會拿到一模一樣的
+    描述，還跟首頁撞在一起（SAI §12.1 要求每頁描述不重複）。
+    但職稱等其他欄位不比照辦理 —— 「碩二生」對英文讀者只是雜訊。
+    """
+    description = _description(client, f"/people/{sample_person['slug']}?lang=en")
+
+    residue = CJK_RE.sub("", description)
+    assert "碩二生" not in description, "職稱不得以中文出現在英文描述"
+    assert residue.strip(), "描述不能只剩中文"
+
+
+def test_research_description_uses_the_published_english_abstract(
+    client, app, bilingual_output
+):
+    """成果頁的英文描述取自 summary_en —— 出版方登錄的摘要原文。
+
+    這是全站英文描述品質最高的一處：不是任何人翻譯或改寫的，
+    可回溯到 DOI。因此這裡驗的是「描述確實由 summary_en 開頭」，
+    而不只是「描述是英文」。
+    """
+    from app.models.research_output import ResearchOutput
+
+    with app.app_context():
+        output = ResearchOutput.query.filter_by(slug=bilingual_output).one()
+        summary_en = output.summary_en
+
+    description = _description(client, f"/research/{bilingual_output}?lang=en")
+
+    # 描述會被截斷，因此比對開頭而不是全等。
+    head = " ".join(summary_en.split())[:60]
+    assert description.startswith(head), (
+        f"英文描述並非取自 summary_en\n  期望開頭：{head!r}\n  實際：{description[:80]!r}"
+    )
+
+
+def test_chinese_description_is_unaffected_by_the_english_work(client, populated):
+    """中文描述必須與加入英文之前完全相同。
+
+    英文是新增的分支，不該動到既有的中文輸出 ——
+    中文版才是 canonical，搜尋引擎索引的是它。
+    """
+    assert _description(client, "/members") == (
+        "NTUST SiPh Lab目前在學研究成員共 1 位，列出各成員的研究方向與相關研究成果。"
+    )
+    assert _description(client, "/research").startswith("NTUST SiPh Lab研究成果共 ")
+
+
 @pytest.mark.parametrize("path", PUBLIC_PATHS)
 def test_no_fake_hreflang_on_incomplete_pages(client, path):
     """內容不齊全的頁面不得輸出 hreflang（SAI §4.2）。

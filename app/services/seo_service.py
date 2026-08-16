@@ -101,7 +101,7 @@ from flask import current_app, url_for
 
 # 麵包屑標籤是介面字串，必須跟著語言走（見 _crumb 的說明）。
 # app.i18n 只相依 flask，不碰資料庫，因此不會造成循環 import。
-from app.i18n import get_lang, t
+from app.i18n import get_lang, localized, t
 from app.models.mixins import PersonStatus
 from app.models.person import Person
 from app.models.research_output import ResearchOutput
@@ -224,6 +224,80 @@ class SEOService:
         return SiteSetting.get()
 
     @staticmethod
+    def _text(obj, field: str) -> str | None:
+        """取某欄位當前語言的值（缺值時回退另一種語言）。
+
+        只回傳文字，不回傳語言碼 —— 呼叫端是 meta 屬性值與 title，
+        兩者都沒有地方可以掛 lang。
+
+        用於 lab_name / university / department 這類「兩種語言都填好」
+        的欄位；回退只是防呆，實務上不會觸發。
+        """
+        return localized(obj, field)[0]
+
+    @staticmethod
+    def _desc_chain(obj, *fields: str) -> str | None:
+        """依當前語言，取第一個有值的描述來源。
+
+        與 _text() 的關鍵差別：**不跨語言回退**。
+
+        其他地方缺英文時回退中文是對的 —— 頁面上顯示的本來就是那段
+        中文，標了 lang 之後一切誠實。但 meta description 不一樣：
+        它不出現在頁面上，只出現在搜尋結果與分享預覽，唯一用途是
+        告訴讀者「這一頁是什麼」。塞一段讀者看不懂的語言進去，
+        這個唯一用途就完全失效 —— 那不是誠實，只是沒用。
+
+        缺值時回 None，由呼叫端接到「以事實組成的同語言描述」。
+        """
+        lang = get_lang()
+        for name in fields:
+            value = getattr(obj, f"{name}_{lang}", None)
+            if value and str(value).strip():
+                return str(value)
+        return None
+
+    @staticmethod
+    def _person_facts(person: Person) -> str | None:
+        """人物頁的事實描述：姓名、職稱、研究室、學校。
+
+        只在該人物沒有任何當前語言的內容欄位時使用。
+        對英文讀者而言「Chun-Liang Yang, Associate Professor,
+        NTUST SiPh Lab」比一串看不懂的中文研究方向有用得多，
+        而每一項都是資料庫裡的既有欄位，不是代寫的介紹（SAI §2.3）。
+
+        姓名是唯一允許跨語言回退的部分：它是專有名詞。
+        多數學生沒有填 name_en，但「陳泓序, NTUST SiPh Lab」仍然
+        指得出這是誰的頁面，而純機構名（四位學生會拿到一模一樣的
+        描述，還跟首頁撞在一起）指不出來。職稱等其他欄位不比照辦理 ——
+        「碩二生」對英文讀者沒有識別作用，只是雜訊。
+
+        連姓名都沒有時回 None —— 湊不出一句話，
+        此時交給站台層級的描述比硬拼半句好。
+        """
+        lang = get_lang()
+        name = localized(person, "name")[0]
+        if not (name or "").strip():
+            return None
+
+        site = SEOService._site()
+        parts: list[str] = [name.strip()]
+        for value in (
+            getattr(person, f"title_{lang}", None),
+            SEOService._lab_name(),
+            SEOService._text(site, "university"),
+        ):
+            value = (value or "").strip()
+            if value and value not in parts:
+                parts.append(value)
+        return t("meta_fallback_separator").join(parts)
+
+    @staticmethod
+    def _lab_name() -> str:
+        """描述句中的研究室名稱，跟著語言走。"""
+        site = SEOService._site()
+        return SEOService._text(site, "lab_name") or site.lab_name_zh
+
+    @staticmethod
     def _title_with_suffix(core: str) -> str:
         """把核心標題加上站台後綴。
 
@@ -245,20 +319,48 @@ class SEOService:
         return f"{core} | {suffix}"
 
     @staticmethod
-    def _default_description() -> str:
-        """站台層級的最後 fallback 描述。"""
+    def _institution_line() -> str:
+        """由「研究室、學校、系所」三個事實串成的描述。
+
+        三者都有 *_en 欄位，因此這一句在兩種語言都是完整的。
+        不使用任何行銷詞彙 —— 它是事實的串接，不是文案（SAI §13.1）。
+        """
         site = SEOService._site()
-        if site.default_description_zh:
-            return SEOService.truncate_description(site.default_description_zh)
-        if site.hero_intro_zh:
-            return SEOService.truncate_description(site.hero_intro_zh)
-        # 最後手段：由已知事實組出描述，不使用行銷詞彙。
-        parts = [site.lab_name_zh]
-        if site.university_zh:
-            parts.append(site.university_zh)
-        if site.department_zh:
-            parts.append(site.department_zh)
-        return "，".join(p for p in parts if p)
+        parts = [
+            SEOService._lab_name(),
+            SEOService._text(site, "university"),
+            SEOService._text(site, "department"),
+        ]
+        return t("meta_fallback_separator").join(p for p in parts if p)
+
+    @staticmethod
+    def _default_description() -> str:
+        """站台層級的最後 fallback 描述。
+
+        中文：default_description_zh -> hero_intro_zh -> 機構事實句。
+
+        英文：hero_intro_en -> 機構事實句。
+          刻意「不」回退到 default_description_zh。
+          其他地方缺英文時回退中文是對的 —— 頁面上顯示的本來就是
+          那段中文，描述說的是實話。但 meta description 不一樣：
+          它的唯一用途是在搜尋結果與分享預覽裡告訴讀者「這頁是什麼」。
+          對英文讀者放一段中文，這個唯一的用途就完全失效了；
+          「NTUST SiPh Lab, National Taiwan University of Science and
+          Technology」雖然單薄，至少答得出那個問題。
+
+          hero_intro_en 欄位在後台已經存在（設定 → 首頁導言（英）），
+          只是還沒填。填了之後這裡就會自動用它，不需要改程式。
+        """
+        site = SEOService._site()
+        if get_lang() == "zh":
+            if site.default_description_zh:
+                return SEOService.truncate_description(site.default_description_zh)
+            if site.hero_intro_zh:
+                return SEOService.truncate_description(site.hero_intro_zh)
+        elif site.hero_intro_en:
+            return SEOService.truncate_description(site.hero_intro_en)
+
+        return SEOService._institution_line()
 
     @staticmethod
     def _default_og_image() -> str | None:
@@ -346,8 +448,11 @@ class SEOService:
     @staticmethod
     def build_about() -> PageMeta:
         site = SEOService._site()
+        # about_intro 目前只有中文欄位。英文版取不到值，會落到
+        # _default_description() 的英文事實句；補上 about_intro_en
+        # 欄位後這裡就會自動改用它，不需要改程式。
         description = (
-            SEOService.truncate_description(site.about_intro_zh)
+            SEOService.truncate_description(SEOService._desc_chain(site, "about_intro"))
             or SEOService._default_description()
         )
         return PageMeta(
@@ -363,11 +468,11 @@ class SEOService:
         site = SEOService._site()
         count = len(people_repo.list_current_members())
         # 描述使用可驗證事實（人數），不使用形容詞（SAI §13.1）。
+        lab = SEOService._lab_name()
         description = (
-            f"{site.lab_name_zh}目前在學研究成員共 {count} 位，"
-            "列出各成員的研究方向與相關研究成果。"
+            t("meta_members_with_count", lab=lab, n=count)
             if count
-            else f"{site.lab_name_zh}在學研究成員列表。"
+            else t("meta_members_empty", lab=lab)
         )
         return PageMeta(
             title=SEOService._title_with_suffix(SEOService._page_label("研究成員 Members", "members_title")),
@@ -382,10 +487,11 @@ class SEOService:
         site = SEOService._site()
         groups = people_repo.list_alumni_by_year()
         count = sum(len(members) for _, members in groups)
+        lab = SEOService._lab_name()
         description = (
-            f"{site.lab_name_zh}畢業生共 {count} 位，依畢業年度列出論文題目與研究方向。"
+            t("meta_alumni_with_count", lab=lab, n=count)
             if count
-            else f"{site.lab_name_zh}畢業生列表，依畢業年度呈現論文題目與研究方向。"
+            else t("meta_alumni_empty", lab=lab)
         )
         return PageMeta(
             title=SEOService._title_with_suffix(SEOService._page_label("畢業生 Alumni", "alumni_title")),
@@ -399,11 +505,11 @@ class SEOService:
     def build_research_index() -> PageMeta:
         site = SEOService._site()
         count = len(research_repo.published_outputs())
+        lab = SEOService._lab_name()
         description = (
-            f"{site.lab_name_zh}研究成果共 {count} 筆，"
-            "涵蓋期刊論文、會議論文、研究專案與原型系統。"
+            t("meta_research_with_count", lab=lab, n=count)
             if count
-            else f"{site.lab_name_zh}研究成果總覽，涵蓋期刊、會議、專案與原型系統。"
+            else t("meta_research_empty", lab=lab)
         )
         return PageMeta(
             title=SEOService._title_with_suffix(SEOService._page_label("研究成果 Research", "research_title")),
@@ -417,9 +523,11 @@ class SEOService:
     @staticmethod
     def build_join() -> PageMeta:
         site = SEOService._site()
+        # join_body 目前只有中文欄位（同 about）。沒有招募文案時走
+        # 事實樣板，那一則兩種語言都有，因此英文版一定是英文。
         description = (
-            SEOService.truncate_description(site.join_body_zh)
-            or f"加入 {site.lab_name_zh}：招募資訊、聯絡方式與實驗室位置。"
+            SEOService.truncate_description(SEOService._desc_chain(site, "join_body"))
+            or t("meta_join_default", lab=SEOService._lab_name())
         )
         return PageMeta(
             title=SEOService._title_with_suffix(
@@ -455,12 +563,15 @@ class SEOService:
             title = SEOService._title_with_suffix(core)
 
         # description fallback：override -> research focus -> thesis -> bio -> 站台預設
+        #
+        # seo_description_zh 這個覆寫欄位只在中文版採用。
+        # 它是管理者為中文搜尋結果手寫的句子，直接搬到英文頁面
+        # 會讓英文版永遠是中文 —— 即使該人物的 research_focus_en
+        # 明明填好了。英文版因此跳過覆寫，直接走內容鏈。
         description = (
-            person.seo_description_zh
-            or person.research_focus_zh
-            or person.research_focus_en
-            or person.thesis_title_zh
-            or person.bio_zh
+            (person.seo_description_zh if get_lang() == "zh" else None)
+            or SEOService._desc_chain(person, "research_focus", "thesis_title", "bio")
+            or SEOService._person_facts(person)
         )
         description = SEOService.truncate_description(description) or SEOService._default_description()
 
@@ -492,12 +603,16 @@ class SEOService:
             title = SEOService._title_with_suffix(output.display_title)
 
         # description fallback：override -> summary -> problem -> method
+        #
+        # 這是全站英文描述品質最高的一處：summary_en 是出版方登錄的
+        # 英文摘要原文（Crossref / OpenAlex 取得，9/9 齊全），
+        # 不是任何人翻譯或改寫的。英文版的成果頁描述因此是真的英文，
+        # 而且可回溯到 DOI。
+        #
+        # seo_description_zh 覆寫同樣只在中文版採用（理由見 build_person）。
         description = (
-            output.seo_description_zh
-            or output.summary_zh
-            or output.summary_en
-            or output.problem_zh
-            or output.method_zh
+            (output.seo_description_zh if get_lang() == "zh" else None)
+            or SEOService._desc_chain(output, "summary", "problem", "method")
         )
         description = SEOService.truncate_description(description) or SEOService._default_description()
 

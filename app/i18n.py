@@ -273,6 +273,54 @@ STRINGS: dict[str, dict[str, str]] = {
     "publisher_project_page": {"zh": "出版社／專案頁面", "en": "Publisher / project page"},
     "code_repository": {"zh": "程式碼 Repository", "en": "Code repository"},
     "dataset": {"zh": "資料集", "en": "Dataset"},
+    # --- meta description（SAI §12.3）---
+    #
+    # 這幾則描述不是「內容」，是由可驗證事實（人數、筆數、機構名）
+    # 套進固定句型組出來的 —— 與導覽標籤同一類，因此翻譯它們
+    # 不違反 SAI §2.3「不得由系統代寫內容」。
+    #
+    # 真正的內容型描述（成果摘要、教授簡介、招募文案）一律走
+    # localized()，有 *_en 就用原文，沒有就回退中文，絕不代筆。
+    #
+    # 中文版必須與改為 t() 之前的字串完全相同（含有無空格），
+    # 否則 tests/test_seo.py 對既有描述的斷言會失效 ——
+    # 那些斷言就是中文 SEO 描述的規格。
+    "meta_members_with_count": {
+        "zh": "%(lab)s目前在學研究成員共 %(n)s 位，列出各成員的研究方向與相關研究成果。",
+        "en": "The current research team at %(lab)s: %(n)s graduate students, "
+              "with each member's research focus and related outputs.",
+    },
+    "meta_members_empty": {
+        "zh": "%(lab)s在學研究成員列表。",
+        "en": "Current graduate students at %(lab)s.",
+    },
+    "meta_alumni_with_count": {
+        "zh": "%(lab)s畢業生共 %(n)s 位，依畢業年度列出論文題目與研究方向。",
+        "en": "%(n)s alumni of %(lab)s, listed by graduation year with thesis "
+              "titles and research topics.",
+    },
+    "meta_alumni_empty": {
+        "zh": "%(lab)s畢業生列表，依畢業年度呈現論文題目與研究方向。",
+        "en": "Alumni of %(lab)s, listed by graduation year with thesis titles "
+              "and research topics.",
+    },
+    "meta_research_with_count": {
+        "zh": "%(lab)s研究成果共 %(n)s 筆，涵蓋期刊論文、會議論文、研究專案與原型系統。",
+        "en": "%(n)s research outputs from %(lab)s, covering journal papers, "
+              "conference papers, projects and prototype systems.",
+    },
+    "meta_research_empty": {
+        "zh": "%(lab)s研究成果總覽，涵蓋期刊、會議、專案與原型系統。",
+        "en": "Research outputs from %(lab)s, covering journal papers, conference "
+              "papers, projects and prototype systems.",
+    },
+    "meta_join_default": {
+        "zh": "加入 %(lab)s：招募資訊、聯絡方式與實驗室位置。",
+        "en": "Join %(lab)s: openings, contact details and lab location.",
+    },
+    #: 站台層級的最後手段描述，由「研究室、學校、系所」串成。
+    #: 中文用全形頓號式逗號，英文用半形逗號加空格。
+    "meta_fallback_separator": {"zh": "，", "en": ", "},
     # --- 語言回退提示 ---
     "translation_unavailable": {
         "zh": "此欄位尚無英文版本，顯示中文原文。",
