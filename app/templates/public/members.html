@@ -32,17 +32,15 @@ NTUST SiPh Lab - Members Page (/members)
 #}
 {% extends "public/base.html" %}
 
-{% block breadcrumb_current %}研究成員{% endblock %}
+{% block breadcrumb_current %}{{ t('members_title') }}{% endblock %}
 
 {% block content %}
 <div class="container">
 
   <header class="section section--tight">
-    <span class="section-label">Members</span>
-    <h1 class="trace-underline">研究成員</h1>
+    <h1 class="trace-underline">{{ t('members_title') }}</h1>
     <p class="prose" style="max-width: var(--measure-narrow); margin-top: var(--space-5);">
-      {{ settings.lab_name_zh }}目前的研究團隊。點選成員可查看其研究方向、
-      論文題目與相關研究成果。
+      {{ t('members_intro', lab=settings.lab_name_zh) }}
     </p>
   </header>
 
@@ -51,54 +49,20 @@ NTUST SiPh Lab - Members Page (/members)
   <section class="section section--tight" aria-labelledby="faculty-heading">
     <div class="section-header">
       <div>
-        <span class="section-label">Principal Investigator</span>
-        <h2 class="section-title" id="faculty-heading">指導教授</h2>
+        <h2 class="section-title" id="faculty-heading">{{ t('principal_investigator') }}</h2>
       </div>
     </div>
 
-    <div class="split-panel">
-      <div>
-        {% if faculty.photo_path %}
-        <img src="{{ media_url(faculty.photo_path) }}"
-             alt="{{ faculty.photo_alt_zh or (faculty.name_zh ~ ' 照片') }}"
-             width="280" height="336"
-             style="width: 100%; max-width: 280px; border-radius: var(--radius-md); object-fit: cover;"
-             loading="lazy">
-        {% endif %}
-      </div>
-
-      <div class="prose">
-        <h3 style="margin-bottom: var(--space-1);">
-          <a href="{{ url_for('public.person_detail', slug=faculty.slug) }}">{{ faculty.name_zh }}</a>
-        </h3>
-        {% if faculty.name_en %}
-        <p class="person-hero__role">{{ faculty.name_en }}</p>
-        {% endif %}
-
-        <dl class="meta-list">
-          {% if faculty.title_zh %}
-          <dt>職稱</dt><dd>{{ faculty.title_zh }}</dd>
-          {% endif %}
-          {% if faculty.education_zh %}
-          <dt>學歷</dt><dd>{{ faculty.education_zh }}</dd>
-          {% endif %}
-          {% if faculty.research_focus_zh %}
-          <dt>研究專長</dt><dd>{{ faculty.research_focus_zh }}</dd>
-          {% endif %}
-          {% if faculty.email_public %}
-          <dt>Email</dt>
-          <dd><a href="mailto:{{ faculty.email_public }}">{{ faculty.email_public }}</a></dd>
-          {% endif %}
-          {% if faculty.external_url %}
-          <dt>官方頁面</dt>
-          <dd>
-            <a href="{{ faculty.external_url }}" rel="noopener">
-              {{ faculty.external_url_label or 'NTUST 官方頁面' }}
-            </a>
-          </dd>
-          {% endif %}
-        </dl>
-      </div>
+    {#
+      這裡刻意「只放辨識資訊 + 連結」，不重複教授的完整檔案。
+      職稱、學歷、研究專長、Email、官方頁面原本在本頁與 /about
+      各渲染一次，是全站最明顯的整段重複之一。
+      現在 /about 負責介紹教授，本頁只負責「他是誰、點這裡看詳細」。
+    #}
+    <div class="card-grid card-grid--wide">
+      {% with person = faculty %}
+      {% include "public/_person_card.html" %}
+      {% endwith %}
     </div>
   </section>
 
@@ -109,11 +73,10 @@ NTUST SiPh Lab - Members Page (/members)
   <section class="section section--tight" aria-labelledby="students-heading">
     <div class="section-header">
       <div>
-        <span class="section-label">Graduate Students</span>
         <h2 class="section-title" id="students-heading">
-          在學研究生
+          {{ t('graduate_students') }}
           {% if members %}
-          <span class="year-group__count">（{{ members | length }} 位）</span>
+          <span class="year-group__count">{{ t('count_people_paren', n=members | length) }}</span>
           {% endif %}
         </h2>
       </div>
@@ -127,17 +90,16 @@ NTUST SiPh Lab - Members Page (/members)
     </div>
     {% else %}
     <div class="empty-state">
-      <p class="empty-state__title">目前沒有已發布的在學成員</p>
-      <p>成員資料由管理者於後台新增並發布後，會在此顯示。</p>
+      <p class="empty-state__title">{{ t('no_current_members') }}</p>
     </div>
     {% endif %}
   </section>
 
-  {# ---------- 下一步（SAI §5.2：無下一步的死路為禁止項） ---------- #}
-  <nav class="next-steps" aria-label="延伸瀏覽">
-    <a class="btn btn--primary" href="{{ url_for('public.research_index') }}">瀏覽研究成果</a>
-    <a class="btn btn--secondary" href="{{ url_for('public.alumni') }}">查看畢業生</a>
-  </nav>
-
+  {#
+    此處原本有一組 next-steps 按鈕，連往「研究成果」與「畢業生」。
+    那兩個連結在每一頁頂端的主導覽都已固定可見，全站也只有六個頁面，
+    在同一畫面把導覽再列一次不會讓任何人更快找到東西。
+    依「資訊不要重複出現」原則移除（其他列表頁同此處理）。
+  #}
 </div>
 {% endblock %}

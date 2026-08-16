@@ -99,6 +99,9 @@ from urllib.parse import urljoin
 
 from flask import current_app, url_for
 
+# 麵包屑標籤是介面字串，必須跟著語言走（見 _crumb 的說明）。
+# app.i18n 只相依 flask，不碰資料庫，因此不會造成循環 import。
+from app.i18n import get_lang, t
 from app.models.mixins import PersonStatus
 from app.models.person import Person
 from app.models.research_output import ResearchOutput
@@ -134,6 +137,14 @@ class PageMeta:
     noindex: bool = False
     #: 麵包屑（BreadcrumbList 與可見導覽共用），[(名稱, 絕對URL)]
     breadcrumbs: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    #: 這一頁的主要內容是否「中英雙語都齊全」。
+    #:
+    #: 只有為 True 時才輸出 hreflang alternate。
+    #: SAI §4.2 明定「若翻譯不完整，不建立假的 hreflang 對應頁」——
+    #: 對只有中文內容的頁面宣告 en 版本，等於告訴搜尋引擎存在
+    #: 一個其實內容重複的英文頁。本站目前只有研究成果達到雙語齊全
+    #: （title_en 9/9、summary_en 9/9），people 與 site_settings 尚未。
+    bilingual: bool = False
 
 
 class SEOService:
@@ -271,9 +282,33 @@ class SEOService:
             return None
 
     @staticmethod
-    def _crumb(label: str, endpoint: str, **values) -> tuple[str, str]:
-        """建立一個麵包屑節點。"""
-        return (label, SEOService.absolute_url(url_for(endpoint, **values)))
+    def _page_label(zh_label: str, en_key: str) -> str:
+        """固定頁面的 <title> 核心。
+
+        中文版維持「中文 English」並列寫法（例如「研究成員 Members」）：
+        那是寫給搜尋結果看的，中英文查詢都能命中，而 canonical 永遠
+        指向中文版，爬蟲拿到的一定是這一份。
+
+        英文版只輸出英文。英文讀者的分頁標題不需要中文前綴 ——
+        瀏覽器分頁很窄，前面掛著看不懂的幾個字會把真正的標題擠掉。
+        """
+        return t(en_key) if get_lang() == "en" else zh_label
+
+    @staticmethod
+    def _crumb(label_key: str, endpoint: str, **values) -> tuple[str, str]:
+        """建立一個麵包屑節點。
+
+        Args:
+            label_key: i18n.STRINGS 的 key，不是字面文字。
+
+        為什麼收 key 而不是文字：
+          麵包屑同時是可見導覽與 BreadcrumbList JSON-LD 的來源
+          （SAI §12.2 [S7] 要求兩者一致）。若在此寫死中文，
+          英文頁面的麵包屑會是未標記語言的中文 —— 螢幕閱讀器
+          會以英文腔唸它（WCAG 3.1.2），而 JSON-LD 也跟著只有中文。
+          由 t() 統一決定，可見內容與 structured data 就一起換語言。
+        """
+        return (t(label_key), SEOService.absolute_url(url_for(endpoint, **values)))
 
     # ------------------------------------------------------------------
     # 各頁面 metadata
@@ -284,6 +319,17 @@ class SEOService:
         title = site.lab_name_zh
         if site.lab_name_en and site.lab_name_en != site.lab_name_zh:
             title = f"{site.lab_name_zh} {site.lab_name_en}"
+
+        # 首頁 title 加上所屬學校作為限定詞。
+        #
+        # 為什麼：本站的 lab_name_zh 與 lab_name_en 都是 "NTUST SiPh Lab"，
+        # 因此首頁 <title> 原本就只有這五個字。對搜尋結果而言那是
+        # 一個沒有任何脈絡的標題 —— 使用者無法從中判斷這是哪個學校、
+        # 哪個領域的研究室（SAI §12.1：Title 每頁唯一且有意義）。
+        # 加上學校名可在不重複 lab 名稱的前提下提供最少必要脈絡。
+        if site.university_zh and site.university_zh not in title:
+            title = f"{title}｜{site.university_zh}"
+
         # 首頁不加後綴（否則會變成 "NTUST SiPh Lab | NTUST SiPh Lab"）。
         suffix = site.default_title_suffix
         if suffix and suffix not in title:
@@ -305,11 +351,11 @@ class SEOService:
             or SEOService._default_description()
         )
         return PageMeta(
-            title=SEOService._title_with_suffix("關於研究室 About"),
+            title=SEOService._title_with_suffix(SEOService._page_label("關於研究室 About", "about_the_lab")),
             description=description,
             canonical=SEOService.absolute_url(url_for("public.about")),
             og_image=SEOService._default_og_image(),
-            breadcrumbs=(SEOService._crumb("首頁", "public.home"),),
+            breadcrumbs=(SEOService._crumb("nav_home", "public.home"),),
         )
 
     @staticmethod
@@ -324,11 +370,11 @@ class SEOService:
             else f"{site.lab_name_zh}在學研究成員列表。"
         )
         return PageMeta(
-            title=SEOService._title_with_suffix("研究成員 Members"),
+            title=SEOService._title_with_suffix(SEOService._page_label("研究成員 Members", "members_title")),
             description=description,
             canonical=SEOService.absolute_url(url_for("public.members")),
             og_image=SEOService._default_og_image(),
-            breadcrumbs=(SEOService._crumb("首頁", "public.home"),),
+            breadcrumbs=(SEOService._crumb("nav_home", "public.home"),),
         )
 
     @staticmethod
@@ -342,11 +388,11 @@ class SEOService:
             else f"{site.lab_name_zh}畢業生列表，依畢業年度呈現論文題目與研究方向。"
         )
         return PageMeta(
-            title=SEOService._title_with_suffix("畢業生 Alumni"),
+            title=SEOService._title_with_suffix(SEOService._page_label("畢業生 Alumni", "alumni_title")),
             description=description,
             canonical=SEOService.absolute_url(url_for("public.alumni")),
             og_image=SEOService._default_og_image(),
-            breadcrumbs=(SEOService._crumb("首頁", "public.home"),),
+            breadcrumbs=(SEOService._crumb("nav_home", "public.home"),),
         )
 
     @staticmethod
@@ -360,12 +406,12 @@ class SEOService:
             else f"{site.lab_name_zh}研究成果總覽，涵蓋期刊、會議、專案與原型系統。"
         )
         return PageMeta(
-            title=SEOService._title_with_suffix("研究成果 Research"),
+            title=SEOService._title_with_suffix(SEOService._page_label("研究成果 Research", "research_title")),
             description=description,
             # canonical 不含篩選參數（見檔頭「特殊機制」）。
             canonical=SEOService.absolute_url(url_for("public.research_index")),
             og_image=SEOService._default_og_image(),
-            breadcrumbs=(SEOService._crumb("首頁", "public.home"),),
+            breadcrumbs=(SEOService._crumb("nav_home", "public.home"),),
         )
 
     @staticmethod
@@ -376,11 +422,15 @@ class SEOService:
             or f"加入 {site.lab_name_zh}：招募資訊、聯絡方式與實驗室位置。"
         )
         return PageMeta(
-            title=SEOService._title_with_suffix(site.join_title_zh or "加入我們 Join"),
+            title=SEOService._title_with_suffix(
+                site.join_title_zh
+                if get_lang() == "zh" and site.join_title_zh
+                else SEOService._page_label("加入我們 Join", "join_title")
+            ),
             description=description,
             canonical=SEOService.absolute_url(url_for("public.join")),
             og_image=SEOService._default_og_image(),
-            breadcrumbs=(SEOService._crumb("首頁", "public.home"),),
+            breadcrumbs=(SEOService._crumb("nav_home", "public.home"),),
         )
 
     @staticmethod
@@ -416,11 +466,11 @@ class SEOService:
 
         # 麵包屑依身分導向正確的列表頁。
         if person.status == PersonStatus.ALUMNI:
-            parent = SEOService._crumb("畢業生", "public.alumni")
+            parent = SEOService._crumb("alumni_title", "public.alumni")
         elif person.status == PersonStatus.FACULTY:
-            parent = SEOService._crumb("關於研究室", "public.about")
+            parent = SEOService._crumb("about_the_lab", "public.about")
         else:
-            parent = SEOService._crumb("研究成員", "public.members")
+            parent = SEOService._crumb("members_title", "public.members")
 
         return PageMeta(
             title=title,
@@ -430,7 +480,7 @@ class SEOService:
             ),
             og_type="profile",
             og_image=SEOService._image_url(person.photo_path) or SEOService._default_og_image(),
-            breadcrumbs=(SEOService._crumb("首頁", "public.home"), parent),
+            breadcrumbs=(SEOService._crumb("nav_home", "public.home"), parent),
         )
 
     @staticmethod
@@ -461,8 +511,16 @@ class SEOService:
             og_image=SEOService._image_url(output.hero_image_path)
             or SEOService._default_og_image(),
             breadcrumbs=(
-                SEOService._crumb("首頁", "public.home"),
-                SEOService._crumb("研究成果", "public.research_index"),
+                SEOService._crumb("nav_home", "public.home"),
+                SEOService._crumb("research_title", "public.research_index"),
+            ),
+            # 標題與摘要兩者都具備中英文時，這一頁才真的有英文版本，
+            # 才可以輸出 hreflang（SAI §4.2）。實測九篇皆滿足。
+            bilingual=bool(
+                (output.title_zh or "").strip()
+                and (output.title_en or "").strip()
+                and (output.summary_zh or "").strip()
+                and (output.summary_en or "").strip()
             ),
         )
 

@@ -156,6 +156,61 @@ def _normalize_database_url(url: str) -> str:
     return url
 
 
+#: 只有 SQLite 接受的 connect_args。其他 dialect 收到會直接拒絕連線。
+_SQLITE_ONLY_CONNECT_ARGS = ("check_same_thread", "timeout")
+
+
+def engine_options_for(database_url: str, base: dict | None = None) -> dict:
+    """依「實際的」dialect 產生 SQLAlchemy engine options。
+
+    為什麼需要這個函式（Gate G2 實測發現的缺陷）：
+      LocalConfig 與 TestConfig 原本在 class 層級寫死
+        connect_args={"check_same_thread": False, "timeout": 15}
+      那是 SQLite 專屬參數。當同一份 config 被指向 PostgreSQL
+      （例如 pytest -m postgres 的雙 DB 矩陣，或把 TEST_DATABASE_URL
+      指到 PG）時，psycopg 會直接拒絕連線：
+        invalid connection option "check_same_thread"
+
+      這正是 SAI §10.2「SQLite-only 技巧必須隔離」的違反案例，
+      而且它「只有在真的連上 PostgreSQL 時才會出現」——
+      本機開發、SQLite 測試、程式碼靜態掃描全都看不出來。
+      這就是 §21.1 Gate G2 要求上線前必須實跑 PostgreSQL 的理由。
+
+    行為：
+      sqlite      -> 補上 SQLite 需要的 connect_args
+      其他 dialect -> 移除 SQLite 專屬 connect_args，保留連線池設定
+
+    Args:
+        database_url: 實際使用的連線字串。
+        base: 既有的 engine options（例如 ProductionConfig 的連線池設定）。
+
+    Returns:
+        可安全交給 SQLAlchemy 的 engine options。
+    """
+    options = dict(base or {})
+    connect_args = dict(options.get("connect_args") or {})
+    url = database_url or ""
+
+    if url.startswith("sqlite"):
+        # gunicorn 以多執行緒服務，SQLAlchemy pool 會跨執行緒重用連線。
+        connect_args.setdefault("check_same_thread", False)
+        # SAI §10.3 的 busy timeout。
+        connect_args.setdefault("timeout", 15)
+        options.setdefault("pool_pre_ping", True)
+    else:
+        for key in _SQLITE_ONLY_CONNECT_ARGS:
+            connect_args.pop(key, None)
+        # PostgreSQL：處理 Cloud SQL 閒置斷線。
+        options.setdefault("pool_pre_ping", True)
+
+    if connect_args:
+        options["connect_args"] = connect_args
+    else:
+        options.pop("connect_args", None)
+
+    return options
+
+
 class BaseConfig:
     """所有環境共用的預設值與安全基線。
 

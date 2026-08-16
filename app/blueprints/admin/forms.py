@@ -175,6 +175,18 @@ _IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "webp"]
 
 _IMAGE_MESSAGE = "只允許 jpg / jpeg / png / webp 圖片（SAI §16）。"
 
+#: <input type="file"> 的 accept 屬性。
+#:
+#: 為什麼要有：沒有 accept 時，作業系統的檔案選擇視窗會列出所有檔案，
+#: 管理者可能選了 .heic（iPhone 預設格式）或 .pdf，按下儲存才被伺服器
+#: 退回。accept 讓不合格的檔案在選擇的當下就是灰的。
+#:
+#: 這只是提示，不是防線 —— 它可以被繞過，因此伺服器端的
+#: FileAllowed 與 MediaService 的驗證一個都不能省（SAI §16）。
+#: 內容必須與 _IMAGE_EXTENSIONS 一致，否則會出現
+#: 「選得到但存不了」或「存得了卻選不到」。
+_IMAGE_ACCEPT = ",".join(f".{ext}" for ext in _IMAGE_EXTENSIONS)
+
 
 class ConfirmForm(FlaskForm):
     """僅含 CSRF token 的確認表單。
@@ -264,7 +276,11 @@ class PersonForm(FlaskForm):
     )
 
     # --- Photo ---
-    photo = FileField("照片", validators=[Optional(), FileAllowed(_IMAGE_EXTENSIONS, _IMAGE_MESSAGE)])
+    photo = FileField(
+        "照片",
+        validators=[Optional(), FileAllowed(_IMAGE_EXTENSIONS, _IMAGE_MESSAGE)],
+        render_kw={"accept": _IMAGE_ACCEPT},
+    )
     photo_alt_zh = StringField(
         "照片替代文字（中）",
         validators=[Optional(), Length(max=200)],
@@ -457,7 +473,9 @@ class ResearchForm(FlaskForm):
 
     # --- Media ---
     hero_image = FileField(
-        "主圖", validators=[Optional(), FileAllowed(_IMAGE_EXTENSIONS, _IMAGE_MESSAGE)]
+        "主圖",
+        validators=[Optional(), FileAllowed(_IMAGE_EXTENSIONS, _IMAGE_MESSAGE)],
+        render_kw={"accept": _IMAGE_ACCEPT},
     )
     hero_image_alt_zh = StringField(
         "主圖替代文字（中）",
@@ -557,7 +575,11 @@ class SiteSettingForm(FlaskForm):
     department_en = StringField("系所（英）", validators=[Optional(), Length(max=200)])
     university_zh = StringField("學校（中）", validators=[Optional(), Length(max=160)])
     university_en = StringField("學校（英）", validators=[Optional(), Length(max=200)])
-    logo = FileField("Logo", validators=[Optional(), FileAllowed(_IMAGE_EXTENSIONS, _IMAGE_MESSAGE)])
+    logo = FileField(
+        "Logo",
+        validators=[Optional(), FileAllowed(_IMAGE_EXTENSIONS, _IMAGE_MESSAGE)],
+        render_kw={"accept": _IMAGE_ACCEPT},
+    )
 
     # --- Homepage ---
     hero_title_zh = TextAreaField("首頁主標（中）", validators=[Optional()])
@@ -565,7 +587,9 @@ class SiteSettingForm(FlaskForm):
     hero_intro_zh = TextAreaField("首頁導言（中）", validators=[Optional()])
     hero_intro_en = TextAreaField("首頁導言（英）", validators=[Optional()])
     hero_media = FileField(
-        "首頁主視覺", validators=[Optional(), FileAllowed(_IMAGE_EXTENSIONS, _IMAGE_MESSAGE)]
+        "首頁主視覺",
+        validators=[Optional(), FileAllowed(_IMAGE_EXTENSIONS, _IMAGE_MESSAGE)],
+        render_kw={"accept": _IMAGE_ACCEPT},
     )
     hero_media_alt_zh = StringField(
         "首頁主視覺替代文字", validators=[Optional(), Length(max=220)]
@@ -594,7 +618,9 @@ class SiteSettingForm(FlaskForm):
         "預設描述", validators=[Optional(), Length(max=320)]
     )
     og_image = FileField(
-        "預設社群分享圖", validators=[Optional(), FileAllowed(_IMAGE_EXTENSIONS, _IMAGE_MESSAGE)]
+        "預設社群分享圖",
+        validators=[Optional(), FileAllowed(_IMAGE_EXTENSIONS, _IMAGE_MESSAGE)],
+        render_kw={"accept": _IMAGE_ACCEPT},
     )
     production_base_url = StringField(
         "正式網域紀錄", validators=[Optional(), Length(max=255)],

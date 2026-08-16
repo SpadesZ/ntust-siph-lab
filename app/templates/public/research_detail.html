@@ -50,7 +50,7 @@ GEO contract（SAI §13.1）：
   {# ---------- Header（SAI §5.3：快速識別成果） ---------- #}
   <header class="output-header">
     <div class="output-header__meta">
-      <span class="type-badge">{{ output.type_label_zh }}</span>
+      <span class="type-badge">{{ output.type_label }}</span>
       <span class="year-badge">
         {% if output.publication_date %}
         <time datetime="{{ output.publication_date | iso_date }}">
@@ -63,10 +63,19 @@ GEO contract（SAI §13.1）：
       {% if output.venue %}<span>{{ output.venue }}</span>{% endif %}
     </div>
 
-    <h1 class="output-header__title">{{ output.display_title }}</h1>
+    {#
+      期刊/會議論文的 h1 是英文原文（見 ResearchOutput.display_title）：
+      那是這篇論文可被引用與檢索的正式名稱。
+      中文翻譯並列於下方，供本地讀者快速理解。
+    #}
+    <h1 class="output-header__title" lang="{{ output.display_title_lang }}">
+      {{ output.display_title }}
+    </h1>
 
-    {% if output.title_en and output.title_zh %}
-    <p class="output-header__title-en">{{ output.title_en }}</p>
+    {% if output.secondary_title %}
+    <p class="output-header__title-en" lang="{{ output.secondary_title_lang }}">
+      {{ output.secondary_title }}
+    </p>
     {% endif %}
 
     {# 作者：Lab 成員可點擊連回人物頁；完整作者列為純文字 #}
@@ -76,7 +85,8 @@ GEO contract（SAI §13.1）：
         {{ output.authors_display_text }}
       {% else %}
         {% for person in output.public_lab_people %}
-        <a href="{{ url_for('public.person_detail', slug=person.slug) }}">{{ person.name_zh }}</a>{% if not loop.last %}、{% endif %}
+        {% set _p_name, _p_name_lang = localized(person, 'name') %}
+        <a href="{{ url_for('public.person_detail', slug=person.slug) }}" lang="{{ _p_name_lang }}">{{ _p_name }}</a>{% if not loop.last %}、{% endif %}
         {% endfor %}
       {% endif %}
     </p>
@@ -91,24 +101,38 @@ GEO contract（SAI §13.1）：
       <figure style="margin: 0 0 var(--space-8);">
         <img class="output-hero-image"
              src="{{ media_url(output.hero_image_path) }}"
-             alt="{{ output.hero_image_alt_zh or (output.display_title ~ ' 示意圖') }}"
+             alt="{{ output.hero_image_alt_zh or (output.display_title ~ t('illustration_suffix')) }}"
              width="900" height="500" loading="eager">
         {% if output.hero_image_alt_zh %}
-        <figcaption class="figure-caption">{{ output.hero_image_alt_zh }}</figcaption>
+        <figcaption class="figure-caption" lang="zh-Hant-TW">{{ output.hero_image_alt_zh }}</figcaption>
         {% endif %}
       </figure>
       {% endif %}
 
       {# ---------- Executive summary（SAI §5.3） ---------- #}
-      {% if output.summary_zh or output.summary_en %}
+      {#
+        摘要是全站唯一中英俱全的內容。主體顯示當前語言的版本，
+        另一個語言收在 <details> ——
+        原本無論看哪種語言都固定「中文在上、English summary 摺疊」，
+        英文讀者得先跳過一整段中文才找得到自己看得懂的那份。
+        <details> 是原生元素，不需要 JS（SAI §18）。
+      #}
+      {% set _summary, _summary_lang = localized(output, 'summary') %}
+      {% set _summary_alt = output.summary_zh if lang == 'en' and output.summary_en
+                            else output.summary_en %}
+      {% if _summary %}
       <section class="output-section" aria-labelledby="summary-heading">
-        <h2 class="output-section__title" id="summary-heading">摘要</h2>
-        <div class="prose prose--preserve">{{ output.summary_zh or output.summary_en }}</div>
-        {% if output.summary_zh and output.summary_en %}
+        <h2 class="output-section__title" id="summary-heading">{{ t('summary') }}</h2>
+        <div class="prose prose--preserve" lang="{{ _summary_lang }}">{{ _summary }}</div>
+        {% if _summary_alt and _summary_alt != _summary %}
+        {% set _alt_lang = text_lang(_summary_alt) or 'en' %}
         <details style="margin-top: var(--space-4);">
-          <summary style="cursor: pointer; font-size: var(--text-sm);">English summary</summary>
-          <div class="prose prose--preserve" style="margin-top: var(--space-3);">
-            {{ output.summary_en }}
+          <summary style="cursor: pointer; font-size: var(--text-sm);">
+            {{ t('summary') }}（{{ t('lang_name_zh') if _alt_lang.startswith('zh') else t('lang_name_en') }}）
+          </summary>
+          <div class="prose prose--preserve" style="margin-top: var(--space-3);"
+               lang="{{ _alt_lang }}">
+            {{ _summary_alt }}
           </div>
         </details>
         {% endif %}
@@ -116,46 +140,57 @@ GEO contract（SAI §13.1）：
       {% endif %}
 
       {# ---------- Research question ---------- #}
-      {% if output.problem_zh %}
+      {% set _problem, _problem_lang = localized(output, 'problem') %}
+      {% if _problem %}
       <section class="output-section" aria-labelledby="problem-heading">
-        <h2 class="output-section__title" id="problem-heading">研究問題 Problem</h2>
-        <div class="prose prose--preserve">{{ output.problem_zh }}</div>
+        {#
+          英文後綴已移除。「研究問題 Problem」是同一個詞的中英並列，
+          與全站已移除的 16 個英文小標屬同一種重複；
+          一併移除也讓 WCAG 3.1.2 的問題消失，而不是加 lang 標記掩蓋。
+        #}
+        <h2 class="output-section__title" id="problem-heading">{{ t('research_question') }}</h2>
+        <div class="prose prose--preserve" lang="{{ _problem_lang }}">{{ _problem }}</div>
       </section>
       {% endif %}
 
       {# ---------- Method ---------- #}
-      {% if output.method_zh %}
+      {% set _method, _method_lang = localized(output, 'method') %}
+      {% if _method %}
       <section class="output-section" aria-labelledby="method-heading">
-        <h2 class="output-section__title" id="method-heading">研究方法 Method</h2>
-        <div class="prose prose--preserve">{{ output.method_zh }}</div>
+        <h2 class="output-section__title" id="method-heading">{{ t('method') }}</h2>
+        <div class="prose prose--preserve" lang="{{ _method_lang }}">{{ _method }}</div>
       </section>
       {% endif %}
 
       {# ---------- Key results ---------- #}
-      {% if output.results_zh %}
+      {% set _results, _results_lang = localized(output, 'results') %}
+      {% if _results %}
       <section class="output-section" aria-labelledby="results-heading">
-        <h2 class="output-section__title" id="results-heading">主要結果 Key Results</h2>
-        <div class="prose prose--preserve">{{ output.results_zh }}</div>
+        <h2 class="output-section__title" id="results-heading">{{ t('key_results') }}</h2>
+        <div class="prose prose--preserve" lang="{{ _results_lang }}">{{ _results }}</div>
       </section>
       {% endif %}
 
       {# ---------- Significance / limitation ---------- #}
-      {% if output.significance_zh %}
+      {% set _significance, _significance_lang = localized(output, 'significance') %}
+      {% if _significance %}
       <section class="output-section" aria-labelledby="significance-heading">
-        <h2 class="output-section__title" id="significance-heading">貢獻與限制 Significance</h2>
-        <div class="prose prose--preserve">{{ output.significance_zh }}</div>
+        <h2 class="output-section__title" id="significance-heading">{{ t('significance') }}</h2>
+        <div class="prose prose--preserve" lang="{{ _significance_lang }}">{{ _significance }}</div>
       </section>
       {% endif %}
 
       {# ---------- Related people（AC-07 雙向導航） ---------- #}
       {% if related_people %}
       <section class="output-section" aria-labelledby="people-heading">
-        <h2 class="output-section__title" id="people-heading">研究室參與成員</h2>
+        <h2 class="output-section__title" id="people-heading">{{ t('lab_contributors') }}</h2>
         <ul class="link-row">
           {% for person in related_people %}
+          {% set _rp_name, _rp_name_lang = localized(person, 'name') %}
           <li>
-            <a class="link-chip" href="{{ url_for('public.person_detail', slug=person.slug) }}">
-              {{ person.name_zh }}
+            <a class="link-chip" href="{{ url_for('public.person_detail', slug=person.slug) }}"
+               lang="{{ _rp_name_lang }}">
+              {{ _rp_name }}
             </a>
           </li>
           {% endfor %}
@@ -166,20 +201,15 @@ GEO contract（SAI §13.1）：
 
     {# ================= 側欄：可驗證資訊 ================= #}
     <aside class="output-aside" aria-labelledby="metadata-heading">
-      <h2 class="output-aside__title" id="metadata-heading">成果資訊</h2>
+      <h2 class="output-aside__title" id="metadata-heading">{{ t('output_info') }}</h2>
 
+      {#
+        「類型 / 年份 / 發表處」原本在這裡再列一次，
+        但 SAI §5.3 已把它們指定為 Header 的工作（type badge、年份、
+        venue），本頁上方確實也都顯示了。同一畫面講兩次，
+        依「資訊不要重複出現」移除，此處只留 Header 沒有的 DOI。
+      #}
       <dl class="meta-list" style="grid-template-columns: minmax(0, 1fr);">
-        <dt>類型</dt>
-        <dd>{{ output.type_label_zh }}（{{ output.type_label_en }}）</dd>
-
-        <dt>年份</dt>
-        <dd>{{ output.year }}</dd>
-
-        {% if output.venue %}
-        <dt>發表處</dt>
-        <dd>{{ output.venue }}</dd>
-        {% endif %}
-
         {% if output.doi %}
         <dt>DOI</dt>
         <dd><a href="{{ output.doi_url }}" rel="noopener">{{ output.doi }}</a></dd>
@@ -188,25 +218,26 @@ GEO contract（SAI §13.1）：
 
       {# ---------- References / Links（SAI §5.3 可驗證性） ---------- #}
       {% if output.external_url or output.github_url or output.dataset_url %}
-      <h2 class="output-aside__title" style="margin-top: var(--space-6);">相關連結</h2>
+      <h2 class="output-aside__title" style="margin-top: var(--space-6);">{{ t('related_links') }}</h2>
       <ul class="site-footer__list" style="list-style: none; padding: 0; margin: 0;">
         {% if output.external_url %}
-        <li><a href="{{ output.external_url }}" rel="noopener">出版社／專案頁面</a></li>
+        <li><a href="{{ output.external_url }}" rel="noopener">{{ t('publisher_project_page') }}</a></li>
         {% endif %}
         {% if output.github_url %}
-        <li><a href="{{ output.github_url }}" rel="noopener">程式碼 Repository</a></li>
+        <li><a href="{{ output.github_url }}" rel="noopener">{{ t('code_repository') }}</a></li>
         {% endif %}
         {% if output.dataset_url %}
-        <li><a href="{{ output.dataset_url }}" rel="noopener">資料集</a></li>
+        <li><a href="{{ output.dataset_url }}" rel="noopener">{{ t('dataset') }}</a></li>
         {% endif %}
       </ul>
       {% endif %}
 
       {% if output.keywords %}
-      <h2 class="output-aside__title" style="margin-top: var(--space-6);">關鍵字</h2>
+      <h2 class="output-aside__title" style="margin-top: var(--space-6);">{{ t('keywords') }}</h2>
       <ul class="tag-list">
         {% for keyword in output.keywords %}
-        <li><span class="tag">{{ keyword }}</span></li>
+        {% set _kw_lang = text_lang(keyword) %}
+        <li><span class="tag"{% if _kw_lang %} lang="{{ _kw_lang }}"{% endif %}>{{ keyword }}</span></li>
         {% endfor %}
       </ul>
       {% endif %}
@@ -215,12 +246,12 @@ GEO contract（SAI §13.1）：
 
   {# ---------- Metadata / 頁尾 ---------- #}
   <p class="last-updated">
-    最後更新：<time datetime="{{ output.updated_at | iso_datetime }}">{{ output.updated_at | local_date }}</time>
+    {{ t('last_updated') }}：<time datetime="{{ output.updated_at | iso_datetime }}">{{ output.updated_at | local_date }}</time>
   </p>
 
-  <nav class="next-steps" aria-label="延伸瀏覽">
-    <a class="btn btn--primary" href="{{ url_for('public.research_index') }}">← 返回研究成果</a>
-    <a class="btn btn--secondary" href="{{ url_for('public.members') }}">認識研究成員</a>
+  {# 只留返回列表；「認識研究成員」在主導覽與上方作者連結都已提供。 #}
+  <nav class="next-steps" aria-label="{{ t('further_browsing') }}">
+    <a class="btn btn--primary" href="{{ url_for('public.research_index') }}">{{ t('back_to_research') }}</a>
   </nav>
 
 </article>

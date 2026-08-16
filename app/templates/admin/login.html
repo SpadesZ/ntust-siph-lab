@@ -50,9 +50,13 @@ NTUST SiPh Lab - Admin Login (/admin/login)
     <div class="hero-grid-backdrop" aria-hidden="true"></div>
 
     <main class="login-card">
+      {#
+        h1 必須描述這一頁的工作（WCAG 2.4.6）。原本是研究室名稱，
+        與 <title>「管理員登入」不一致，螢幕閱讀器使用者聽不出這是登入頁。
+      #}
       <div class="login-card__brand">
-        <h1>{{ settings.lab_name_zh }}</h1>
-        <p>Content Management</p>
+        <h1>管理員登入</h1>
+        <p>{{ settings.lab_name_zh }}</p>
       </div>
 
       {% with messages = get_flashed_messages(with_categories=true) %}
@@ -71,19 +75,29 @@ NTUST SiPh Lab - Admin Login (/admin/login)
       <form method="post" action="{{ url_for('auth.login') }}" class="admin-form">
         {{ form.csrf_token }}
 
+        {#
+          aria-invalid + aria-describedby 讓錯誤訊息與欄位真正關聯
+          （WCAG 3.3.1 / 4.1.2）。沒有它，使用者把焦點移回欄位時
+          螢幕閱讀器只會唸標籤，不會唸出錯在哪裡。
+          這是把「已存在的文字」接上欄位，不是新增重複內容。
+        #}
         <div class="form-field {% if form.username.errors %}form-field--has-error{% endif %}">
           {{ form.username.label(class='form-field__label') }}
-          {{ form.username(class='input') }}
           {% if form.username.errors %}
-          <p class="form-field__error" role="alert">{{ form.username.errors | join('；') }}</p>
+          {{ form.username(class='input', **{'aria-invalid': 'true', 'aria-describedby': 'username-error'}) }}
+          <p class="form-field__error" id="username-error" role="alert">{{ form.username.errors | join('；') }}</p>
+          {% else %}
+          {{ form.username(class='input') }}
           {% endif %}
         </div>
 
         <div class="form-field {% if form.password.errors %}form-field--has-error{% endif %}">
           {{ form.password.label(class='form-field__label') }}
-          {{ form.password(class='input') }}
           {% if form.password.errors %}
-          <p class="form-field__error" role="alert">{{ form.password.errors | join('；') }}</p>
+          {{ form.password(class='input', **{'aria-invalid': 'true', 'aria-describedby': 'password-error'}) }}
+          <p class="form-field__error" id="password-error" role="alert">{{ form.password.errors | join('；') }}</p>
+          {% else %}
+          {{ form.password(class='input') }}
           {% endif %}
         </div>
 

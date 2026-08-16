@@ -43,7 +43,14 @@ AC-05 對照：
 #}
 {% extends "public/base.html" %}
 
-{% block breadcrumb_current %}{{ person.name_zh }}{% endblock %}
+{#
+  姓名與職稱在 hero、麵包屑、photo alt 三處都要用，
+  在此一次取好，避免三處各自挑語言而挑出不一樣的結果。
+#}
+{% set _name, _name_lang = localized(person, 'name') %}
+{% set _title, _title_lang = localized(person, 'title') %}
+
+{% block breadcrumb_current %}<span lang="{{ _name_lang }}">{{ _name }}</span>{% endblock %}
 
 {% block content %}
 <article class="container">
@@ -53,35 +60,57 @@ AC-05 對照：
     {% if person.photo_path %}
     <img class="person-hero__photo"
          src="{{ media_url(person.photo_path) }}"
-         alt="{{ person.photo_alt_zh or (person.name_zh ~ ' 照片') }}"
+         alt="{{ person.photo_alt_zh or (_name ~ ' ' ~ t('photo_suffix')) }}"
          width="200" height="240">
     {% endif %}
 
     <div>
-      <h1 class="person-hero__title">
-        {{ person.name_zh }}
-        {% if person.name_en %}
-        <span class="person-hero__name-en">{{ person.name_en }}</span>
+      {#
+        姓名並列：主標是當前語言的版本，副標是另一個語言的寫法。
+        這是人物頁而不是列表卡，兩種寫法都列出來有意義
+        （查證論文作者、寫信稱呼時都會用到），但各自要帶 lang。
+      #}
+      {% set _alt_name = person.name_zh if lang == 'en' and person.name_en else person.name_en %}
+      <h1 class="person-hero__title" lang="{{ _name_lang }}">
+        {{ _name }}
+        {% if _alt_name and _alt_name != _name %}
+        <span class="person-hero__name-en"
+              lang="{{ text_lang(_alt_name) or 'en' }}">{{ _alt_name }}</span>
         {% endif %}
       </h1>
 
       <p class="person-hero__role">
         {%- set role_parts = [] -%}
-        {%- if person.title_zh %}{% set _ = role_parts.append(person.title_zh) %}{% endif -%}
-        {%- if person.degree %}{% set _ = role_parts.append(person.degree) %}{% endif -%}
+        {%- if _title %}{% set _ = role_parts.append((_title, _title_lang)) %}{% endif -%}
+        {%- if person.degree %}{% set _ = role_parts.append((person.degree, text_lang(person.degree))) %}{% endif -%}
         {%- if person.status == 'alumni' and person.graduation_year -%}
-          {% set _ = role_parts.append(person.graduation_year ~ ' 年畢業') %}
+          {% set _ = role_parts.append((t('graduated_in', year=person.graduation_year), none)) %}
         {%- elif person.status == 'current' and person.entry_year -%}
-          {% set _ = role_parts.append(person.entry_year ~ ' 年入學') %}
+          {% set _ = role_parts.append((t('entered_in', year=person.entry_year), none)) %}
         {%- endif -%}
-        {{ role_parts | join(' · ') }}
+        {%- for part_text, part_lang in role_parts -%}
+          {%- if not loop.first %} · {% endif -%}
+          <span{% if part_lang %} lang="{{ part_lang }}"{% endif %}>{{ part_text }}</span>
+        {%- endfor -%}
       </p>
 
-      {# 研究焦點一句話 —— 首屏的核心資訊 #}
-      {% if person.research_focus_zh or person.research_focus_en %}
-      <p class="person-hero__focus">
-        {{ person.research_focus_zh or person.research_focus_en }}
+      {#
+        研究焦點 —— 首屏的核心資訊（SAI §5.2）。
+        這裡是全站唯一輸出此人研究焦點的位置：
+        原本右欄還有一個「研究方向」區塊渲染同一個欄位，
+        造成同一畫面重複兩次，已移除。英文版併入此處。
+      #}
+      {% set _focus, _focus_lang = localized(person, 'research_focus') %}
+      {% set _focus_alt = person.research_focus_zh if lang == 'en' and person.research_focus_en
+                          else person.research_focus_en %}
+      {% if _focus %}
+      <p class="person-hero__focus" lang="{{ _focus_lang }}">
+        {{ _focus }}
       </p>
+      {% if _focus_alt and _focus_alt != _focus %}
+      <p class="person-hero__focus-en"
+         lang="{{ text_lang(_focus_alt) or 'en' }}">{{ _focus_alt }}</p>
+      {% endif %}
       {% endif %}
 
       {# 公開聯絡與學術連結 #}
@@ -106,7 +135,7 @@ AC-05 對照：
         {% if person.external_url %}
         <li>
           <a class="link-chip" href="{{ person.external_url }}" rel="noopener">
-            {{ person.external_url_label or '官方頁面' }}
+            {{ person.external_url_label or t('official_page') }}
           </a>
         </li>
         {% endif %}
@@ -122,26 +151,28 @@ AC-05 對照：
     <div>
       {# 左欄：結構化 metadata #}
       <dl class="meta-list">
-        {% if person.education_zh %}
-        <dt>學歷</dt><dd>{{ person.education_zh }}</dd>
+        {% set _edu, _edu_lang = localized(person, 'education') %}
+        {% if _edu %}
+        <dt>{{ t('education') }}</dt><dd lang="{{ _edu_lang }}">{{ _edu }}</dd>
         {% endif %}
 
-        {% if person.thesis_title_zh or person.thesis_title_en %}
-        <dt>{{ '論文題目' if person.status == 'alumni' else '研究題目' }}</dt>
+        {% set _thesis, _thesis_lang = localized(person, 'thesis_title') %}
+        {% if _thesis %}
+        <dt>{{ t('thesis_title') if person.status == 'alumni' else t('research_subject') }}</dt>
         <dd>
-          {{ person.thesis_title_zh or person.thesis_title_en }}
-          {% if person.thesis_title_zh and person.thesis_title_en %}
-          <br><em>{{ person.thesis_title_en }}</em>
+          <span lang="{{ _thesis_lang }}">{{ _thesis }}</span>
+          {% if person.thesis_title_zh and person.thesis_title_en and _thesis != person.thesis_title_en %}
+          <br><em lang="en">{{ person.thesis_title_en }}</em>
           {% endif %}
         </dd>
         {% endif %}
 
         {% if person.entry_year %}
-        <dt>入學年度</dt><dd>{{ person.entry_year }}</dd>
+        <dt>{{ t('entry_year') }}</dt><dd>{{ person.entry_year }}</dd>
         {% endif %}
 
         {% if person.graduation_year %}
-        <dt>畢業年度</dt><dd>{{ person.graduation_year }}</dd>
+        <dt>{{ t('graduation_year') }}</dt><dd>{{ person.graduation_year }}</dd>
         {% endif %}
 
         {#
@@ -149,16 +180,24 @@ AC-05 對照：
           public_destination 才會回傳值（SAI §5.4 隱私規則）。
         #}
         {% if person.public_destination %}
-        <dt>目前任職</dt><dd>{{ person.public_destination }}</dd>
+        {% set _dest_lang = text_lang(person.public_destination) %}
+        <dt>{{ t('current_position') }}</dt>
+        <dd{% if _dest_lang %} lang="{{ _dest_lang }}"{% endif %}>{{ person.public_destination }}</dd>
         {% endif %}
       </dl>
 
-      {% if person.skills %}
+      {#
+        只列出研究焦點沒提過的技能（見 Person.distinctive_skills）。
+        教授的 skills 與 research_focus 是同一份六項清單，
+        照列會讓同一畫面重複三次同樣的資訊。
+      #}
+      {% if person.distinctive_skills %}
       <div style="margin-top: var(--space-8);">
-        <h2 class="section-label">Methods &amp; Tools</h2>
+        <h2 class="section-label">{{ t('methods_and_tools') }}</h2>
         <ul class="tag-list">
-          {% for skill in person.skills %}
-          <li><span class="tag">{{ skill }}</span></li>
+          {% for skill in person.distinctive_skills %}
+          {% set _skill_lang = text_lang(skill) %}
+          <li><span class="tag"{% if _skill_lang %} lang="{{ _skill_lang }}"{% endif %}>{{ skill }}</span></li>
           {% endfor %}
         </ul>
       </div>
@@ -166,44 +205,49 @@ AC-05 對照：
     </div>
 
     <div>
-      {# 右欄：敘述內容 #}
-      {% if person.research_focus_zh %}
+      {#
+        右欄：敘述內容。
+        「研究方向」區塊已移除 —— 它渲染的是 person.research_focus_zh，
+        與首屏 person-hero__focus 完全相同，在同一畫面重複兩次。
+        首屏是 SAI §5.2 指定的位置，故保留首屏、移除此處。
+      #}
+      {% set _bio, _bio_lang = localized(person, 'bio') %}
+      {% if _bio %}
       <section class="output-section">
-        <h2 class="output-section__title">研究方向</h2>
-        <div class="prose prose--preserve">{{ person.research_focus_zh }}</div>
-        {% if person.research_focus_en %}
-        <div class="prose prose--preserve" style="color: var(--color-ink-soft); margin-top: var(--space-3);">
-          {{ person.research_focus_en }}
-        </div>
-        {% endif %}
-      </section>
-      {% endif %}
-
-      {% if person.bio_zh %}
-      <section class="output-section">
-        <h2 class="output-section__title">簡介</h2>
-        <div class="prose prose--preserve">{{ person.bio_zh }}</div>
+        <h2 class="output-section__title">{{ t('bio') }}</h2>
+        <div class="prose prose--preserve" lang="{{ _bio_lang }}">{{ _bio }}</div>
       </section>
       {% endif %}
 
       {# ---------- Related Outputs（SAI §5.2、AC-07 雙向導航） ---------- #}
       <section class="output-section" aria-labelledby="related-outputs-heading">
-        <h2 class="output-section__title" id="related-outputs-heading">相關研究成果</h2>
+        <h2 class="output-section__title" id="related-outputs-heading">{{ t('related_outputs') }}</h2>
 
+        {#
+          最多列 5 筆。理由：本研究室目前所有成果的作者都是同一位
+          教授，完整列出等於把 /research 整頁再抄一次。
+          列出最新幾筆足以建立雙向導航（AC-07），其餘導到 /research。
+        #}
         {% if related_outputs %}
         <ul class="stack-list">
-          {% for output in related_outputs %}
+          {% for output in related_outputs[:5] %}
           <li>
             <article class="card">
               <div class="card__meta">
-                <span class="type-badge">{{ output.type_label_zh }}</span>
+                <span class="type-badge">{{ output.type_label }}</span>
                 <span class="year-badge">{{ output.year }}</span>
               </div>
-              <h3 class="card__title">
+              <h3 class="card__title" lang="{{ output.display_title_lang }}">
                 <a href="{{ url_for('public.research_detail', slug=output.slug) }}">
                   {{ output.display_title }}
                 </a>
               </h3>
+              {# 中英並列，理由同 research_index.html。 #}
+              {% if output.secondary_title %}
+              <p class="card__meta" lang="{{ output.secondary_title_lang }}">
+                {{ output.secondary_title }}
+              </p>
+              {% endif %}
               {% if output.venue %}
               <p class="card__body"><small>{{ output.venue }}</small></p>
               {% endif %}
@@ -211,9 +255,16 @@ AC-05 對照：
           </li>
           {% endfor %}
         </ul>
+        {% if related_outputs | length > 5 %}
+        <p class="section-more">
+          <a href="{{ url_for('public.research_index') }}">
+            {{ t('view_all_n_outputs', n=related_outputs | length) }}
+          </a>
+        </p>
+        {% endif %}
         {% else %}
         <div class="empty-state">
-          <p>目前沒有與此成員關聯的已發布研究成果。</p>
+          <p>{{ t('no_related_outputs') }}</p>
         </div>
         {% endif %}
       </section>
@@ -222,16 +273,20 @@ AC-05 對照：
 
   {# ---------- 頁尾（SAI §5.2：Last updated + 不得有死路） ---------- #}
   <p class="last-updated">
-    最後更新：<time datetime="{{ person.updated_at | iso_datetime }}">{{ person.updated_at | local_date }}</time>
+    {{ t('last_updated') }}：<time datetime="{{ person.updated_at | iso_datetime }}">{{ person.updated_at | local_date }}</time>
   </p>
 
-  <nav class="next-steps" aria-label="延伸瀏覽">
+  {#
+    只保留「返回上一層列表」。原本還有一顆「瀏覽研究成果」，
+    但主導覽已固定提供該入口，且上方「相關研究成果」區塊本來就
+    連往各成果 —— 三個管道通往同一處，屬重複。
+  #}
+  <nav class="next-steps" aria-label="{{ t('further_browsing') }}">
     {% if person.status == 'alumni' %}
-    <a class="btn btn--secondary" href="{{ url_for('public.alumni') }}">← 返回畢業生列表</a>
+    <a class="btn btn--secondary" href="{{ url_for('public.alumni') }}">{{ t('back_to_alumni') }}</a>
     {% else %}
-    <a class="btn btn--secondary" href="{{ url_for('public.members') }}">← 返回研究成員</a>
+    <a class="btn btn--secondary" href="{{ url_for('public.members') }}">{{ t('back_to_members') }}</a>
     {% endif %}
-    <a class="btn btn--secondary" href="{{ url_for('public.research_index') }}">瀏覽研究成果</a>
   </nav>
 
 </article>

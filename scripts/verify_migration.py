@@ -693,11 +693,19 @@ def write_difference_report(results: list[CheckResult]) -> Path:
     lines.append(f"| **UNRESOLVED（含驗證失敗）** | **{len(all_failures)}** |")
     lines.append("")
 
+    signoff_complete, signoff_note = _content_signoff_signed()
+
     if all_failures:
         lines.append("> **狀態：阻擋上線。** 存在未解決項目，依 SAI §22.1 與 AC-26，")
         lines.append("> 不得進行 Cloud/domain cutover，也不得關閉舊 Google Sites。")
+    elif not signoff_complete:
+        # 交付前審查 REV-101：自動檢查全過 != 人已經簽核。
+        lines.append("> **狀態：自動檢查通過，但尚未取得人工簽核，仍不得 cutover。**")
+        lines.append(f"> {signoff_note}")
+        lines.append("> 依 SAI §21.1 G6 與 §22.6，content sign-off 完成才是 launch 的必要條件。")
     else:
-        lines.append("> **狀態：可進行 cutover。** UNRESOLVED = 0，AC-21~AC-26 全數通過。")
+        lines.append("> **狀態：可進行 cutover。** UNRESOLVED = 0，AC-21~AC-26 全數通過，")
+        lines.append("> 且 content_signoff.md 的人工簽核區塊已完成。")
     lines.append("")
 
     # --- 逐項檢查 ---
@@ -768,6 +776,43 @@ def _load_app():
         return None
 
 
+def _content_signoff_signed() -> tuple[bool, str]:
+    """檢查 content_signoff.md §5 的人工簽核區塊是否真的完成。
+
+    為什麼需要這個檢查（交付前審查 REV-101）：
+      這份腳本原本只要 UNRESOLVED = 0 就輸出「可進行 cutover」。
+      但 SAI §21.1 G6 的條件是「difference_report 無 UNRESOLVED
+      **且** content sign-off 完成」—— 兩個條件，不是一個。
+
+      實務上曾發生：自動檢查全過、報告宣告可 cutover，
+      但 content_signoff.md §5 的六個 checkbox 全未勾、
+      簽核人與日期三欄全是空白底線。也就是說，
+      一份「沒有人簽名的簽核書」被當成通過。
+
+      自動化能證明「資料對得起來」，不能證明「人看過並同意」。
+      這個函式把後者變成同樣硬性的門檻。
+
+    Returns:
+        (是否已簽核, 說明文字)
+    """
+    path = LEGACY_DIR / "content_signoff.md"
+    if not path.is_file():
+        return False, "找不到 legacy/google_sites/content_signoff.md。"
+
+    text = path.read_text(encoding="utf-8")
+
+    unchecked = text.count("- [ ]")
+    # 簽核欄位以全形底線佔位，尚未填寫時仍會存在。
+    blank_fields = text.count("＿＿＿")
+
+    if unchecked or blank_fields:
+        return False, (
+            f"content_signoff.md §5 尚未完成："
+            f"{unchecked} 個確認項未勾選、{blank_fields} 個簽核欄位仍為空白。"
+        )
+    return True, "content_signoff.md §5 已完成簽核。"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="NTUST SiPh Lab 遷移驗證（SAI §22、AC-21~AC-26）。"
@@ -825,7 +870,16 @@ def main() -> int:
         print(f"驗證失敗：{total_failures} 項未解決，阻擋 cutover（SAI §22.1、AC-26）。")
         return 1
 
-    print("驗證通過：UNRESOLVED = 0，符合 AC-21~AC-26 的 launch gate。")
+    # 自動檢查全過 != 可以上線。SAI §21.1 G6 是兩個條件的 AND：
+    # UNRESOLVED = 0 **且** content sign-off 完成（交付前審查 REV-101）。
+    signoff_complete, signoff_note = _content_signoff_signed()
+    if not signoff_complete:
+        print("自動檢查通過：UNRESOLVED = 0。")
+        print(f"但仍不得 cutover：{signoff_note}")
+        print("依 SAI §21.1 G6 與 §22.6，content sign-off 完成才是 launch 的必要條件。")
+        return 2
+
+    print("驗證通過：UNRESOLVED = 0 且人工簽核完成，符合 AC-21~AC-26 的 launch gate。")
     return 0
 
 

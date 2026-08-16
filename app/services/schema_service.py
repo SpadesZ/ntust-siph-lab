@@ -86,6 +86,8 @@
 
 from __future__ import annotations
 
+import re
+
 from flask import url_for
 
 from app.models.mixins import PersonStatus
@@ -348,15 +350,22 @@ class SchemaService:
             "@id": url + "#output",
             "name": output.display_title,
             "url": url,
-            "inLanguage": "zh-Hant-TW",
+            # inLanguage 描述「這個作品本身」的語言，不是頁面的語言。
+            # 期刊/會議論文發表於英文刊物，其正式標題與內文都是英文；
+            # 標成 zh-Hant-TW 會與 name（英文原文）自相矛盾，
+            # 也會誤導引用端（SAI §12.2 [S7]：不得描述與事實不符的內容）。
+            "inLanguage": "en" if (output.is_scholarly and output.title_en) else "zh-Hant-TW",
         }
 
         # headline 僅對 Article 家族有意義。
         if schema_type == "ScholarlyArticle":
             data["headline"] = output.display_title
 
-        if output.title_en and output.title_en != output.display_title:
-            data["alternateName"] = output.title_en
+        # 另一語言的標題。display_title 現在對論文回傳英文原文，
+        # 因此這裡要用 secondary_title 才能把中文譯名帶進結構化資料，
+        # 否則中文標題會完全消失（頁面看得到、structured data 卻沒有）。
+        if output.secondary_title:
+            data["alternateName"] = output.secondary_title
 
         description = output.summary_zh or output.summary_en
         if description:
@@ -386,8 +395,26 @@ class SchemaService:
             data["author"] = authors
         elif output.authors_display_text:
             # 沒有 Lab 人物關聯但有作者列時，輸出純文字作者。
-            # 這仍是頁面可見內容，符合 [S7]。
-            data["author"] = {"@type": "Person", "name": output.authors_display_text}
+            #
+            # 為什麼要拆分（交付前審查 REV-106）：
+            #   authors_display_text 是完整作者列，例如
+            #     "C.-L. Yang, A. B. Chen, D. Lin"
+            #   直接輸出成 {"@type":"Person","name": <整串>} 等於宣告
+            #   一個姓名叫「C.-L. Yang, A. B. Chen, D. Lin」的人。
+            #   那不是頁面的意思，違反 [S7]「structured data 必須正確
+            #   代表頁面主內容」，也會讓消費端無法解析出個別作者。
+            #
+            #   因此以分隔符拆成多個 Person。拆不出來（只有一個項目）
+            #   時就輸出單一 Person，行為與拆分前一致。
+            names = [
+                part.strip()
+                for part in re.split(r"[;،,、；]|\band\b|&", output.authors_display_text)
+                if part.strip()
+            ]
+            if len(names) > 1:
+                data["author"] = [{"@type": "Person", "name": n} for n in names]
+            elif names:
+                data["author"] = {"@type": "Person", "name": names[0]}
 
         if output.keywords:
             data["keywords"] = output.keywords

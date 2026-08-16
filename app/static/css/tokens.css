@@ -85,8 +85,13 @@
      為什麼需要：--color-photon 對白底只有 3.1:1，
      用在小字會不符 WCAG AA（需 4.5:1）。此值為 5.4:1。 */
   --color-photon-deep: #007070;
-  --color-ink-soft: #45566a;         /* 次要文字，對白底 7.4:1 */
-  --color-ink-faint: #6b7d92;        /* 輔助標籤，對白底 4.6:1（仍達 AA）*/
+  --color-ink-soft: #45566a;         /* 次要文字，對白底 7.5:1 */
+  /* 輔助標籤。對白底 5.5:1、對 --color-surface-muted 5.0:1，兩者皆達 AA。
+     前一版是 #6b7d92，註解宣稱「4.6:1（仍達 AA）」但實測為
+     白底 4.22:1、muted 底 3.88:1 —— 兩者都不到 4.5:1，而它正好被用在
+     13px 的 .filter-bar__label（/research 的表單標籤）等 14 處。
+     修改前請用對比計算驗證，不要只改註解。 */
+  --color-ink-faint: #5a6b80;
   --color-navy-soft: #1b3557;        /* navy 區塊內的分隔 */
   --color-surface-sunken: #e8eef2;
 
