@@ -122,11 +122,15 @@ def run_smoke(base_url: str, allow_insecure: bool = False) -> Result:
     is_https = parsed.scheme == "https"
 
     # --- 1. 健康檢查（SAI §19、附錄 A）---
+    # 這裡刻意打 /health 而非 /healthz：/healthz 是 Cloud Run 的保留路徑，
+    # Google Frontend 會在請求抵達容器前攔截並回自己的 404，
+    # 因此從公開網址永遠測不到應用程式的健康狀態（ADR-014）。
+    # /health 是同一個 handler 的別名，容器內的 /healthz 契約不變。
     try:
-        r = session.get(f"{base}/healthz", timeout=20)
-        result.add("/healthz 回應 200", r.status_code == 200, f"HTTP {r.status_code}")
+        r = session.get(f"{base}/health", timeout=20)
+        result.add("/health 回應 200", r.status_code == 200, f"HTTP {r.status_code}")
     except Exception as exc:  # noqa: BLE001
-        result.add("/healthz 回應 200", False, f"連線失敗：{exc}")
+        result.add("/health 回應 200", False, f"連線失敗：{exc}")
         return result  # 服務不可用時後續檢查沒有意義
 
     # --- 2. 公開頁面 ---
