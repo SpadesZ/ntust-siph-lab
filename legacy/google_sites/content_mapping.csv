@@ -17,4 +17,4 @@ LC-015,https://sites.google.com/view/ntust-siph-lab/,碩二生 陳泓序,Person(
 LC-016,https://sites.google.com/view/ntust-siph-lab/,碩二生 謝卓雅,Person(status=current),people.name_zh（/members 與個人頁）,MIGRATED,
 LC-017,https://sites.google.com/view/ntust-siph-lab/,碩二生 鍾宇辰,Person(status=current),people.name_zh（/members 與個人頁）,MIGRATED,
 LC-018,https://sites.google.com/view/ntust-siph-lab/,碩二生 陳志翰,Person(status=current),people.name_zh（/members 與個人頁）,MIGRATED,
-LC-019,https://sites.google.com/view/ntust-siph-lab/,Google Calendar 嵌入：台灣假日日曆（agenda 檢視）,—（不搬遷）,—（經核准不搬遷，新站無對應位置）,APPROVED_REMOVE,核准人：研究室管理者（本專案委託人）｜核准日期：2026-08-15｜理由：台灣假日日曆屬第三方通用行事曆，非 NTUST SiPh Lab 之研究內容，對研究室官網訪客無資訊價值；且第三方 iframe 會增加 LCP 負擔與 CSP 例外。決策依 SAI §22.1 由管理者明確批准，非 Agent 自行省略（ADR-011 / §23.1）。
+LC-019,https://sites.google.com/view/ntust-siph-lab/,Google Calendar 嵌入：台灣假日日曆（agenda 檢視）,—（不搬遷）,—（經核准不搬遷，新站無對應位置）,APPROVED_REMOVE,核准人：研究室管理者（本專案委託人）｜核准日期：2026-08-16｜核准依據：委託人於 2026-08-16 交付前審查的回覆中，就本項目明確表示「沒有很需要」並同意移除（原文與脈絡見 content_signoff.md §2.1）。｜委託人理由：非研究室必要內容。｜技術補充（審查者提供供委託人參考，非委託人本人陳述）：台灣假日日曆屬第三方通用行事曆，與 SAI §3 定義的四類訪客目標皆無關；且將是全站唯一的第三方 iframe，需為其放寬現行 CSP。｜決策依 SAI §22.1 由管理者明確批准，非 Agent 自行省略（ADR-011 / §23.1）。

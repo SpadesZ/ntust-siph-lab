@@ -246,10 +246,24 @@ def person_new():
         admin_id, ip = _actor()
         try:
             person = PersonService.create(form.to_dict(), admin_user_id=admin_id, ip_address=ip)
-            _handle_person_photo(person, form)
-        except (PersonServiceError, MediaError) as exc:
+        except PersonServiceError as exc:
             flash(str(exc), "error")
             return render_template("admin/person_form.html", form=form, person=None)
+
+        # 到這裡人物已經建立並 commit。照片是獨立的後續步驟，
+        # 其失敗「不得」把使用者送回新增表單 —— 那會讓管理員以為
+        # 整筆都失敗而重新送出，結果建立第二筆人物
+        # （slug 會被自動去重成 -2，產生難以察覺的重複實體）。
+        # 改為導向已建立人物的編輯頁，並明確說明哪一半成功了。
+        try:
+            _handle_person_photo(person, form)
+        except (PersonServiceError, MediaError) as exc:
+            flash(
+                f"「{person.name_zh}」已建立（草稿），但照片未能上傳：{exc} "
+                "請在本頁重新上傳照片，不要重複新增人物。",
+                "error",
+            )
+            return redirect(url_for("admin.person_edit", person_id=person.id))
 
         flash(f"已建立「{person.name_zh}」（草稿）。請確認內容後再發布。", "success")
         return redirect(url_for("admin.person_edit", person_id=person.id))
@@ -490,10 +504,21 @@ def research_new():
             output = ResearchService.create(
                 form.to_dict(), admin_user_id=admin_id, ip_address=ip
             )
-            _handle_research_image(output, form)
-        except (ResearchServiceError, MediaError) as exc:
+        except ResearchServiceError as exc:
             flash(str(exc), "error")
             return render_template("admin/research_form.html", form=form, output=None)
+
+        # 理由同 person_new：成果已 commit，主圖失敗不得回到新增表單，
+        # 否則重送會建立重複成果。
+        try:
+            _handle_research_image(output, form)
+        except (ResearchServiceError, MediaError) as exc:
+            flash(
+                f"「{output.display_title}」已建立（草稿），但主圖未能上傳：{exc} "
+                "請在本頁重新上傳主圖，不要重複新增成果。",
+                "error",
+            )
+            return redirect(url_for("admin.research_edit", output_id=output.id))
 
         flash(f"已建立「{output.display_title}」（草稿）。", "success")
         return redirect(url_for("admin.research_edit", output_id=output.id))

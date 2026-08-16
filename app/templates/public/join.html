@@ -34,33 +34,41 @@ NTUST SiPh Lab - Join / Contact Page (/join)
 #}
 {% extends "public/base.html" %}
 
-{% block breadcrumb_current %}加入我們{% endblock %}
+{% block breadcrumb_current %}{{ t('join_title') }}{% endblock %}
 
 {% block content %}
 <div class="container">
 
+  {% set _join_title, _join_title_lang = localized(settings, 'join_title') %}
   <header class="section section--tight">
-    <span class="section-label">Join Us</span>
-    <h1 class="trace-underline">{{ settings.join_title_zh or '加入我們' }}</h1>
+    <h1 class="trace-underline"
+        {% if _join_title %}lang="{{ _join_title_lang }}"{% endif %}>
+      {{ _join_title or t('join_title') }}
+    </h1>
   </header>
 
   <div class="split-panel section section--tight">
 
     {# ---------- 招募說明 ---------- #}
     <div class="prose">
-      {% if settings.join_body_zh %}
-      <div class="prose--preserve">{{ settings.join_body_zh }}</div>
+      {% set _join_body, _join_body_lang = localized(settings, 'join_body') %}
+      {% if _join_body %}
+      <div class="prose--preserve" lang="{{ _join_body_lang }}">{{ _join_body }}</div>
       {% else %}
-      <div class="empty-state">
-        <p class="empty-state__title">招募說明尚未設定</p>
-        <p>管理者可於後台「網站設定 → 招募與聯絡」填寫招募內容。</p>
-      </div>
+      {#
+        沒有招募文案時，仍必須給訪客一個可執行的下一步 ——
+        這頁是全站唯一的招募入口，不能停在「尚未設定」。
+        右欄的 Email 就是那個下一步，這裡明講。
+      #}
+      <p>{{ t('join_no_posting') }}</p>
       {% endif %}
 
-      {% if settings.join_cta_url and settings.join_cta_label_zh %}
+      {% set _cta, _cta_lang = localized(settings, 'join_cta_label') %}
+      {% if settings.join_cta_url and _cta %}
       <p style="margin-top: var(--space-8);">
-        <a class="btn btn--primary" href="{{ settings.join_cta_url }}" rel="noopener">
-          {{ settings.join_cta_label_zh }}
+        <a class="btn btn--primary" href="{{ settings.join_cta_url }}" rel="noopener"
+           lang="{{ _cta_lang }}">
+          {{ _cta }}
         </a>
       </p>
       {% endif %}
@@ -68,39 +76,46 @@ NTUST SiPh Lab - Join / Contact Page (/join)
 
     {# ---------- 聯絡資訊 ---------- #}
     <aside class="output-aside" aria-labelledby="contact-heading">
-      <h2 class="output-aside__title" id="contact-heading">聯絡方式</h2>
+      <h2 class="output-aside__title" id="contact-heading">{{ t('contact_method') }}</h2>
 
       <dl class="meta-list" style="grid-template-columns: minmax(0, 1fr);">
         {% if faculty %}
-        <dt>指導教授</dt>
+        {% set _fac_name, _fac_name_lang = localized(faculty, 'name') %}
+        {% set _fac_title, _fac_title_lang = localized(faculty, 'title') %}
+        <dt>{{ t('supervisor') }}</dt>
         <dd>
-          <a href="{{ url_for('public.person_detail', slug=faculty.slug) }}">
-            {{ faculty.name_zh }}
+          <a href="{{ url_for('public.person_detail', slug=faculty.slug) }}"
+             lang="{{ _fac_name_lang }}">
+            {{ _fac_name }}
           </a>
-          {% if faculty.title_zh %}<br>{{ faculty.title_zh }}{% endif %}
+          {% if _fac_title %}<br><span lang="{{ _fac_title_lang }}">{{ _fac_title }}</span>{% endif %}
         </dd>
         {% endif %}
 
+        {#
+          Email 刻意不在側欄重複：本頁最後一步「來信聯絡」就是
+          這個位址的正式落點，那裡才是訪客真正要用它的時機。
+          同一頁印兩次只是讓版面變長。
+        #}
         {% set contact_email = settings.contact_email or (faculty.email_public if faculty else None) %}
-        {% if contact_email %}
-        <dt>Email</dt>
-        <dd><a href="mailto:{{ contact_email }}">{{ contact_email }}</a></dd>
-        {% endif %}
 
-        {% if settings.university_zh or settings.department_zh %}
-        <dt>單位</dt>
+        {% set _uni, _uni_lang = localized(settings, 'university') %}
+        {% set _dep, _dep_lang = localized(settings, 'department') %}
+        {% if _uni or _dep %}
+        <dt>{{ t('unit') }}</dt>
         <dd>
-          {{ settings.university_zh or '' }}
-          {% if settings.department_zh %}<br>{{ settings.department_zh }}{% endif %}
+          {% if _uni %}<span lang="{{ _uni_lang }}">{{ _uni }}</span>{% endif %}
+          {% if _dep %}<br><span lang="{{ _dep_lang }}">{{ _dep }}</span>{% endif %}
         </dd>
         {% endif %}
 
-        {% if settings.address_zh %}
-        <dt>地址</dt>
+        {% set _addr, _addr_lang = localized(settings, 'address') %}
+        {% if _addr %}
+        <dt>{{ t('address') }}</dt>
         <dd>
-          {{ settings.address_zh }}
+          <span lang="{{ _addr_lang }}">{{ _addr }}</span>
           {% if settings.map_url %}
-          <br><a href="{{ settings.map_url }}" rel="noopener">在地圖上開啟</a>
+          <br><a href="{{ settings.map_url }}" rel="noopener">{{ t('open_in_map') }}</a>
           {% endif %}
         </dd>
         {% endif %}
@@ -114,41 +129,45 @@ NTUST SiPh Lab - Join / Contact Page (/join)
   <section class="section section--tight" aria-labelledby="next-heading">
     <div class="section-header">
       <div>
-        <span class="section-label">Before You Apply</span>
-        <h2 class="section-title trace-underline" id="next-heading">申請前建議先了解</h2>
+        <h2 class="section-title trace-underline" id="next-heading">{{ t('before_you_apply') }}</h2>
       </div>
     </div>
 
+    {#
+      每一步都是「完整句子 + 句尾獨立連結」，不把 <a> 夾在句子中間。
+
+      原本是「先閱讀〈關於研究室〉頁面的研究方向，確認…」這種夾心結構。
+      要翻譯就得把一句話拆成前綴與後綴兩個字串，而中英文語序不同，
+      切點必然在其中一種語言變得很奇怪（英文的連結會落在句首）。
+      連結移到句尾之後，句子在兩種語言都是完整的一句，
+      三個步驟的視覺結構也一致了。
+
+      這兩步的內文原本寫「成果頁說明每項研究的問題、方法與結果」與
+      「成員頁列出每位在學成員的研究焦點」。兩句都不成立 ——
+      指路的文字不能描述一個不存在的頁面，否則訪客照著走一次
+      就知道這個網站的說明不可信。維持只描述實際看得到的東西。
+    #}
     <ol class="ordered-steps prose">
       <li>
-        <h3 class="focus-item__title">確認研究方向是否相符</h3>
-        <p>
-          先閱讀
-          <a href="{{ url_for('public.about') }}">關於研究室</a>
-          頁面的研究方向，確認與自己的興趣一致。
-        </p>
+        <h3 class="focus-item__title">{{ t('step_check_focus') }}</h3>
+        <p>{{ t('step_check_focus_body') }}</p>
+        <p><a href="{{ url_for('public.about') }}">{{ t('about_the_lab') }} →</a></p>
       </li>
       <li>
-        <h3 class="focus-item__title">閱讀代表研究成果</h3>
-        <p>
-          <a href="{{ url_for('public.research_index') }}">研究成果</a>
-          頁面說明每項研究的問題、方法與結果，可具體了解研究室的工作內容。
-        </p>
+        <h3 class="focus-item__title">{{ t('step_read_outputs') }}</h3>
+        <p>{{ t('step_read_outputs_body') }}</p>
+        <p><a href="{{ url_for('public.research_index') }}">{{ t('research_title') }} →</a></p>
       </li>
       <li>
-        <h3 class="focus-item__title">了解目前團隊在做什麼</h3>
-        <p>
-          <a href="{{ url_for('public.members') }}">研究成員</a>
-          頁面列出每位在學成員的研究焦點。
-        </p>
+        <h3 class="focus-item__title">{{ t('step_see_team') }}</h3>
+        <p>{{ t('step_see_team_body') }}</p>
+        <p><a href="{{ url_for('public.members') }}">{{ t('members_title') }} →</a></p>
       </li>
       {% if contact_email %}
       <li>
-        <h3 class="focus-item__title">來信聯絡</h3>
-        <p>
-          請於信中說明研究興趣、相關背景與希望投入的方向，寄至
-          <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>。
-        </p>
+        <h3 class="focus-item__title">{{ t('step_email') }}</h3>
+        <p>{{ t('step_email_body') }}</p>
+        <p><a href="mailto:{{ contact_email }}">{{ contact_email }}</a></p>
       </li>
       {% endif %}
     </ol>

@@ -143,6 +143,21 @@ def create_app(config_name: str | None = None, config_overrides: dict | None = N
     if config_overrides:
         app.config.update(config_overrides)
 
+    # engine options 必須依「最終確定的」連線字串重算，而不是沿用
+    # config class 在 import 時寫死的值。
+    #
+    # 原因：LocalConfig/TestConfig 的 connect_args 含 SQLite 專屬參數
+    # （check_same_thread、timeout）。若這些 config 被指向 PostgreSQL
+    # —— 測試矩陣與 config_overrides 都會造成這種情況 ——
+    # psycopg 會拒絕連線並回報 invalid connection option。
+    # 由 engine_options_for 依實際 dialect 決定，見該函式的說明。
+    from app.config import engine_options_for
+
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = engine_options_for(
+        app.config.get("SQLALCHEMY_DATABASE_URI", ""),
+        app.config.get("SQLALCHEMY_ENGINE_OPTIONS"),
+    )
+
     _configure_logging(app)
 
     # session 絕對有效期（SAI §11.1 建議 8 小時）。
@@ -165,6 +180,12 @@ def create_app(config_name: str | None = None, config_overrides: dict | None = N
 
     # 匯入所有 model，確保 Alembic metadata 完整（見 models/__init__.py）。
     from app import models  # noqa: F401
+
+    # 語言必須在 blueprint 之前掛載：before_request 的註冊順序決定
+    # g.lang 是否在 route 執行時已就緒。
+    from app.i18n import init_i18n
+
+    init_i18n(app)
 
     _register_blueprints(app)
     _register_template_helpers(app)

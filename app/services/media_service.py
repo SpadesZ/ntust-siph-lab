@@ -115,6 +115,27 @@ _PROFILE_MAX = (800, 800)
 _RESEARCH_MAX = (1600, 1600)
 _SITE_MAX = (1920, 1920)
 
+#: 允許解碼的最大像素數（寬 x 高）。
+#:
+#: 為什麼需要這個上限（交付前審查 REV-107 實測發現）：
+#:   MAX_CONTENT_LENGTH 限制的是「壓縮後的位元組數」，不是解碼後的
+#:   記憶體用量。PNG 對單色區域的壓縮率極高，因此一個遠低於 8 MB
+#:   上限的檔案可以解出巨大的點陣圖：
+#:
+#:     12000 x 12000 = 144 MPx，編碼後僅 435 KB（通過 8 MB 檢查）
+#:     -> 解碼佔用約 432 MB RSS
+#:
+#:   Pillow 自身的 MAX_IMAGE_PIXELS（89,478,485）在超過時「只發出
+#:   DecompressionBombWarning」，要到兩倍（約 179 MPx）才會拋
+#:   DecompressionBombError。也就是 89~179 MPx 之間完全沒有防護。
+#:   Cloud Run 預設記憶體 512 MiB，單一請求即可觸發 OOM 並重啟
+#:   instance —— 這是不需要任何憑證就能觸發的服務中斷。
+#:
+#:   40 MPx 的選擇：遠高於任何合理的人物照或量測圖
+#:   （例如 8000 x 5000 = 40 MPx 已是高階全片幅相機的輸出），
+#:   但把最壞情況的解碼記憶體壓在約 120 MB 以內。
+_MAX_DECODED_PIXELS = 40_000_000
+
 #: 用途 -> (object key 前綴, 最大尺寸)
 _PURPOSES = {
     "people": ("people", _PROFILE_MAX),
@@ -270,12 +291,28 @@ class MediaService:
                 "伺服器缺少影像處理套件 Pillow，無法處理上傳。"
             ) from exc
 
-        # 第一次：驗證。
+        # 第一次：驗證，並在「實際解碼之前」檢查尺寸。
+        #
+        # 順序很重要：Image.open 只讀 header，不會配置整張點陣圖，
+        # 因此可以先用 probe.size 擋掉解壓炸彈，再決定要不要解碼。
+        # 若等到 thumbnail() 才發現太大，記憶體已經配置出去了。
         try:
             with Image.open(io.BytesIO(raw)) as probe:
+                width, height = probe.size
+                pixels = width * height
                 probe.verify()
+        except MediaError:
+            raise
         except Exception as exc:  # noqa: BLE001 - Pillow 會拋多種例外
             raise MediaError("檔案不是有效的影像，或影像已損毀。") from exc
+
+        # 見 _MAX_DECODED_PIXELS 的說明（REV-107）。
+        if pixels > _MAX_DECODED_PIXELS:
+            raise MediaError(
+                f"影像尺寸過大（{width}x{height}，約 {pixels // 1_000_000} 百萬像素）。"
+                f"上限為 {_MAX_DECODED_PIXELS // 1_000_000} 百萬像素，"
+                "請先縮小後再上傳（SAI §16）。"
+            )
 
         # 第二次：實際處理。
         try:

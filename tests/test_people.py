@@ -304,7 +304,8 @@ def test_publish_requires_research_focus(app):
 def test_legacy_pending_person_may_publish_without_research_focus(app):
     """母站遷入且標記待補者可豁免研究焦點門檻。
 
-    這是 2026-08-15 管理者裁示的實作（ADR-012）：
+    這是 2026-08-16 管理者裁示的實作
+    （docs/adr/ADR-012-legacy-pending-publish-exemption.md）：
     四位碩二生的姓名必須可被查得（AC-23），
     但研究方向母站不存在，不得捏造（SAI §2.3）。
     豁免僅限研究焦點一項，且必須產生 warning 持續提醒。

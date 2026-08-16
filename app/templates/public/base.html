@@ -58,7 +58,7 @@ Semantic HTML（SAI §12.1、§17）：
 ============================================================
 #}
 <!DOCTYPE html>
-<html lang="zh-Hant-TW">
+<html lang="{{ html_lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -80,9 +80,24 @@ Semantic HTML（SAI §12.1、§17）：
   <meta property="og:description" content="{{ meta.description }}">
   <meta property="og:url" content="{{ meta.canonical }}">
   <meta property="og:site_name" content="{{ settings.lab_name_zh }}">
-  <meta property="og:locale" content="zh_TW">
+  <meta property="og:locale" content="{{ 'en_US' if lang == 'en' else 'zh_TW' }}">
   {% if meta.og_image %}
   <meta property="og:image" content="{{ meta.og_image }}">
+  {% endif %}
+
+  {#
+    hreflang 只在該頁「雙語內容都齊全」時輸出。
+
+    SAI §4.2：「若翻譯不完整，不建立假的 hreflang 對應頁。」
+    本站 people / site_settings 的 *_en 多數未填，只有研究成果
+    達到雙語齊全。對其餘頁面宣告 en 版本，等於告訴搜尋引擎
+    有一個其實內容重複的英文頁 —— 那正是該條禁止的事。
+    meta.bilingual 由 SEOService 依實際欄位判斷。
+  #}
+  {% if meta.bilingual %}
+  <link rel="alternate" hreflang="zh-Hant" href="{{ meta.canonical }}">
+  <link rel="alternate" hreflang="en" href="{{ meta.canonical }}?lang=en">
+  <link rel="alternate" hreflang="x-default" href="{{ meta.canonical }}">
   {% endif %}
 
   <meta name="twitter:card" content="{{ 'summary_large_image' if meta.og_image else 'summary' }}">
@@ -112,7 +127,7 @@ Semantic HTML（SAI §12.1、§17）：
 </head>
 <body>
   {# 鍵盤使用者的第一個可聚焦元素（SAI §17、AC-18） #}
-  <a class="skip-link" href="#main-content">跳至主要內容</a>
+  <a class="skip-link" href="#main-content">{{ t('skip_to_content') }}</a>
 
   <header class="site-header">
     <div class="container site-header__inner">
@@ -128,19 +143,23 @@ Semantic HTML（SAI §12.1、§17）：
         #}
         {% if settings.logo_path %}
         <img class="site-brand__logo" src="{{ media_url(settings.logo_path) }}"
-             alt="{{ settings.lab_name_zh }} 標誌" width="40" height="40">
+             alt="{{ settings.lab_name_zh }} {{ t('lab_logo_alt') }}" width="40" height="40">
         {% else %}
         <img class="site-brand__logo"
              src="{{ url_for('static', filename='img/ntust-emblem-80.webp') }}"
              srcset="{{ url_for('static', filename='img/ntust-emblem-80.webp') }} 1x,
                      {{ url_for('static', filename='img/ntust-emblem-160.webp') }} 2x"
-             alt="國立臺灣科技大學校徽" width="40" height="40" loading="eager">
+             alt="{{ t('ntust_emblem_alt') }}" width="40" height="40" loading="eager">
         {% endif %}
+        {#
+          品牌名只輸出當前語言的版本。原本中英文同時顯示，
+          現在有語言切換後那就是同一件事講兩次。
+          本站的 lab_name_zh 與 lab_name_en 目前都是 "NTUST SiPh Lab"，
+          兩行並列更是完全重複。
+        #}
         <span class="site-brand__text">
-          <span class="site-brand__zh">{{ settings.lab_name_zh }}</span>
-          {% if settings.lab_name_en and settings.lab_name_en != settings.lab_name_zh %}
-          <span class="site-brand__en">{{ settings.lab_name_en }}</span>
-          {% endif %}
+          {% set _brand, _brand_lang = localized(settings, 'lab_name') %}
+          <span class="site-brand__zh" lang="{{ _brand_lang }}">{{ _brand }}</span>
         </span>
       </a>
 
@@ -158,26 +177,68 @@ Semantic HTML（SAI §12.1、§17）：
              （SAI §18）與「功能不應完全依賴 JS」的原則。
         全部連結永遠在 DOM 中且可直接 Tab 到達（AC-16、AC-18）。
       #}
-      <nav class="site-nav" aria-label="主導覽">
+      <nav class="site-nav" aria-label="{{ t('main_nav') }}">
         <ul class="site-nav__list">
           {% set nav_items = [
-            ('public.home', '首頁'),
-            ('public.about', '關於'),
-            ('public.members', '研究成員'),
-            ('public.research_index', '研究成果'),
-            ('public.alumni', '畢業生'),
-            ('public.join', '加入我們')
+            ('public.home', 'nav_home'),
+            ('public.about', 'nav_about'),
+            ('public.members', 'nav_members'),
+            ('public.research_index', 'nav_research'),
+            ('public.alumni', 'nav_alumni'),
+            ('public.join', 'nav_join')
           ] %}
-          {% for endpoint, label in nav_items %}
+          {% for endpoint, key in nav_items %}
           <li>
-            <a class="site-nav__link" href="{{ url_for(endpoint) }}"
+            <a class="site-nav__link" href="{{ url_for(endpoint) }}{{ '?lang=en' if lang == 'en' else '' }}"
                {% if request.endpoint == endpoint %}aria-current="page"{% endif %}>
-              {{ label }}
+              {{ t(key) }}
             </a>
           </li>
           {% endfor %}
         </ul>
       </nav>
+
+      {#
+        語言切換。
+
+        位置決策：在 <nav> 之外、header 最右側。
+          語言切換不是「一個頁面」，而是「用什麼語言看目前這一頁」
+          的全站控制項。若放進 <nav aria-label="主導覽">，螢幕閱讀器
+          在列出主導覽時會把它當成第七個目的地念出來 —— 但它不會
+          帶使用者去任何新地方。視覺上它也應該與六個導覽項目分開，
+          否則使用者要在七個看起來一樣的標籤裡分辨哪個不是頁面。
+
+        形式決策：兩格分段控制，不是單一連結。
+          前一版只顯示「你可以切到的那一個」（中文頁上寫 English）。
+          那個寫法有已知的語意雙關：讀者無法判斷「English」是在說
+          「本頁是英文」還是「按了會變英文」—— 兩種解讀都合理，
+          而它們的意思完全相反。兩格並列則同時回答了
+          「現在是哪個語言」與「可以切到哪個」。
+
+        當前語言用 <span> 而不是 <a>：它按下去不會有任何事發生，
+        就不該出現在 Tab 順序裡。aria-current 讓螢幕閱讀器拿到
+        與視覺填色相同的訊息（SAI §6.3：不以顏色作為唯一訊息）。
+
+        語言名稱一律以該語言自己的寫法呈現（中文 / English），
+        不隨介面語言翻譯 —— 看不懂當前語言的人，要靠這個標籤
+        找到自己看得懂的那一個。
+
+        全部以 <a> 實作，不需要任何 JavaScript（SAI §18）。
+      #}
+      <div class="lang-switch" role="group" aria-label="{{ t('switch_language') }}">
+        {% for code in ('zh', 'en') %}
+        {% set _tag_lang = 'zh-Hant-TW' if code == 'zh' else 'en' %}
+        {% if code == lang %}
+        <span class="lang-switch__item lang-switch__item--current"
+              aria-current="true" lang="{{ _tag_lang }}">{{ t('lang_name_' ~ code) }}</span>
+        {% else %}
+        <a class="lang-switch__item" href="{{ lang_url(code) }}"
+           lang="{{ _tag_lang }}"
+           hreflang="{{ 'zh-Hant' if code == 'zh' else 'en' }}"
+           rel="alternate">{{ t('lang_name_' ~ code) }}</a>
+        {% endif %}
+        {% endfor %}
+      </div>
     </div>
   </header>
 
@@ -187,7 +248,7 @@ Semantic HTML（SAI §12.1、§17）：
   #}
   {% block breadcrumb %}
   {% if meta.breadcrumbs %}
-  <nav class="breadcrumb container" aria-label="麵包屑">
+  <nav class="breadcrumb container" aria-label="{{ t('breadcrumb') }}">
     <ol>
       {% for label, url in meta.breadcrumbs %}
       <li><a href="{{ url }}">{{ label }}</a></li>
@@ -210,15 +271,19 @@ Semantic HTML（SAI §12.1、§17）：
     <div class="container">
       <div class="site-footer__grid">
         <div>
-          <h2 class="site-footer__heading">{{ settings.lab_name_zh }}</h2>
-          {% if settings.university_zh or settings.department_zh %}
+          {% set _fb, _fb_lang = localized(settings, 'lab_name') %}
+          <h2 class="site-footer__heading" lang="{{ _fb_lang }}">{{ _fb }}</h2>
+          {% set _uni, _uni_lang = localized(settings, 'university') %}
+          {% set _dep, _dep_lang = localized(settings, 'department') %}
+          {% if _uni or _dep %}
           <p>
-            {{ settings.university_zh or '' }}
-            {% if settings.department_zh %}<br>{{ settings.department_zh }}{% endif %}
+            {% if _uni %}<span lang="{{ _uni_lang }}">{{ _uni }}</span>{% endif %}
+            {% if _dep %}<br><span lang="{{ _dep_lang }}">{{ _dep }}</span>{% endif %}
           </p>
           {% endif %}
-          {% if settings.address_zh %}
-          <p>{{ settings.address_zh }}</p>
+          {% set _addr, _addr_lang = localized(settings, 'address') %}
+          {% if _addr %}
+          <p lang="{{ _addr_lang }}">{{ _addr }}</p>
           {% endif %}
         </div>
 
@@ -236,14 +301,14 @@ Semantic HTML（SAI §12.1、§17）：
           若未來頁面數量成長到主導覽放不下，再重新評估。
         #}
         <div>
-          <h2 class="site-footer__heading">聯絡與連結</h2>
+          <h2 class="site-footer__heading">{{ t('contact_and_links') }}</h2>
           <ul class="site-footer__list">
             {% if settings.contact_email %}
             <li><a href="mailto:{{ settings.contact_email }}">{{ settings.contact_email }}</a></li>
             {% endif %}
             {% if settings.official_ntust_url %}
             <li>
-              <a href="{{ settings.official_ntust_url }}" rel="noopener">NTUST 官方頁面</a>
+              <a href="{{ settings.official_ntust_url }}" rel="noopener">{{ t('ntust_official_page') }}</a>
             </li>
             {% endif %}
             {#

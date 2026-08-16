@@ -349,7 +349,9 @@ LEGACY_ITEMS: list[LegacyItem] = [
             notes=(
                 "母站僅提供姓名與年級。英文姓名、研究方向、論文題目母站不存在，"
                 "依 SAI §2.3 不得推測填入；已以 legacy_pending_detail 標記待補，"
-                "並經 2026-08-15 管理者裁示同意先行發布（見 content_signoff.md）。"
+                "並經 2026-08-16 管理者裁示同意先行發布"
+                "（委託人理由：後台管理員可自行補齊；"
+                "見 docs/adr/ADR-012-legacy-pending-publish-exemption.md）。"
             ),
         )
         for student in STUDENTS
@@ -365,9 +367,13 @@ LEGACY_ITEMS: list[LegacyItem] = [
         status=STATUS_APPROVED_REMOVE,
         verification="核准紀錄存於 legacy/google_sites/content_signoff.md",
         approval=(
-            "核准人：研究室管理者（本專案委託人）｜核准日期：2026-08-15｜"
-            "理由：台灣假日日曆屬第三方通用行事曆，非 NTUST SiPh Lab 之研究內容，"
-            "對研究室官網訪客無資訊價值；且第三方 iframe 會增加 LCP 負擔與 CSP 例外。"
+            "核准人：研究室管理者（本專案委託人）｜核准日期：2026-08-16｜"
+            "核准依據：委託人於 2026-08-16 交付前審查的回覆中，就本項目明確表示"
+            "「沒有很需要」並同意移除（原文與脈絡見 content_signoff.md §2.1）。｜"
+            "委託人理由：非研究室必要內容。｜"
+            "技術補充（審查者提供供委託人參考，非委託人本人陳述）："
+            "台灣假日日曆屬第三方通用行事曆，與 SAI §3 定義的四類訪客目標皆無關；"
+            "且將是全站唯一的第三方 iframe，需為其放寬現行 CSP。｜"
             "決策依 SAI §22.1 由管理者明確批准，非 Agent 自行省略（ADR-011 / §23.1）。"
         ),
         notes="AC-25 要求本項必須有明確 MIGRATED 或 APPROVED_REMOVE 決策，已滿足。",
