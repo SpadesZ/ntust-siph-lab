@@ -11,15 +11,24 @@
 #   本檔的好處是設定漂移可由 git diff 看出來。
 #
 # 使用前必須替換的預留位置：
-#   PROJECT_ID / REGION / DOMAIN / INSTANCE
+#   PROJECT_ID / REGION / DOMAIN / GIT_SHA
+#
+# 資料庫（2026-08-17 依實際部署更新）：
+#   本案使用 Neon 免費方案，不是 Cloud SQL（ADR-013）。因此：
+#     - 沒有 run.googleapis.com/cloudsql-instances 註解
+#     - DATABASE_URL 是完整連線字串，整條存於 Secret Manager，
+#       不再由「unix socket 路徑 + 另一個密碼 secret」組合
+#   若日後改回 Cloud SQL，需補回該註解並改寫 DATABASE_URL。
 #
 # 硬性規定：
-#   1. 禁止在本檔填入任何 secret 值。SECRET_KEY 與 DB 密碼一律
-#      以 secretKeyRef 引用 Secret Manager（SAI §11.2、[S21]）。
+#   1. 禁止在本檔填入任何 secret 值。SECRET_KEY、AUDIT_IP_SALT 與
+#      DATABASE_URL 一律以 secretKeyRef 引用（SAI §11.2、[S21]）。
 #   2. 禁止把 STORAGE_BACKEND 設為 local —— Cloud Run 的
 #      container filesystem 不具持久性 [S17]，ProductionConfig
 #      會直接拒絕啟動。
 #   3. 禁止把 DATABASE_URL 設為 sqlite（ADR-004）。
+#   4. 禁止把 minScale 調成 0 以外的值 —— 那會讓月費從 NT$0
+#      變成每月數百元（見 deploy/cloudrun.md §11）。
 #
 # 維護契約：
 #   新增環境變數時必須同步更新 .env.example、app/config.py 與
@@ -39,9 +48,11 @@ spec:
   template:
     metadata:
       annotations:
-        # Cloud SQL 連線（SAI §21.2、[S18]）
-        run.googleapis.com/cloudsql-instances: PROJECT_ID:REGION:siph-lab-db
-        # 研究室網站流量低；上限刻意壓低以控制成本
+        # 無 cloudsql-instances 註解：Neon 走公網 TLS，不需要掛載
+        # unix socket（ADR-013）。
+        #
+        # minScale=0 是零成本的關鍵：沒有流量時不計費。
+        # 研究室網站流量低；maxScale 刻意壓低以控制成本。
         autoscaling.knative.dev/minScale: "0"
         autoscaling.knative.dev/maxScale: "4"
         run.googleapis.com/startup-cpu-boost: "true"
@@ -72,9 +83,10 @@ spec:
             - name: DB_BACKEND
               value: postgresql
 
-            # Cloud SQL 走 unix socket；密碼由 Secret Manager 注入。
-            - name: DATABASE_URL
-              value: postgresql+psycopg://siph_app:$(DB_PASSWORD)@/siph_lab?host=/cloudsql/PROJECT_ID:REGION:siph-lab-db
+            # DATABASE_URL 見下方 secrets 區塊：Neon 的 host/user/password
+            # 都在同一條連線字串裡，因此整條存成一個 secret。
+            # 注意連線字串必須使用 direct 端點（主機名稱不含 -pooler），
+            # 原因見 deploy/cloudrun.md §1.2。
 
             - name: STORAGE_BACKEND
               value: gcs
@@ -118,10 +130,12 @@ spec:
                   name: siph-secret-key
                   key: latest
 
-            - name: DB_PASSWORD
+            # Neon 的完整連線字串（含 host/user/password）。
+            # 取代了 Cloud SQL 版本的 siph-db-password。
+            - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: siph-db-password
+                  name: siph-database-url
                   key: latest
 
             # AuditLog 的 IP 雜湊 salt（SAI §8.8）。
