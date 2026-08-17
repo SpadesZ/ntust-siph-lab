@@ -88,12 +88,17 @@ python scripts/export_sqlite.py --output ./migration-package
 
 見 `deploy/cloudrun.md` 第 1、3 節。
 
+資料庫為 Neon（ADR-013），可直接連線，**不需要 Cloud SQL Auth Proxy**：
+
 ```bash
-cloud-sql-proxy "${PROJECT_ID}:${REGION}:siph-lab-db" &
-export DATABASE_URL="postgresql+psycopg://siph_app:<pw>@127.0.0.1:5432/siph_lab"
+export DATABASE_URL="$(gcloud secrets versions access latest --secret=siph-database-url)"
+export APP_ENV=local FLASK_APP=wsgi.py
 flask db upgrade
 flask db current      # 必須等於階段 2 記錄的 revision
 ```
+
+> 連線字串必須是 **direct 端點**（主機名稱不含 `-pooler`）且 scheme 為
+> `postgresql+psycopg://`。原因見 `deploy/cloudrun.md` §1.2。
 
 **通過條件**
 
@@ -243,7 +248,8 @@ python scripts/import_postgres.py --package ./migration-package \
 1. 舊 Google Sites 尚未關閉（依 AC-26 必然如此），維持原狀即可
 2. Cloud Run service 設為 `--no-traffic` 或刪除
 3. 本機 SQLite + uploads 未受影響，繼續在本機修正
-4. Cloud SQL instance 可保留（下次重試）或刪除（省成本）
+4. Neon 專案可直接保留 —— 免費方案閒置會自動縮到零，
+   放著不會產生費用，下次重試可直接沿用（ADR-013）
 
 > 因為 SAI 強制「舊站在 sign-off 前不得關閉」，情境 C 的
 > 對外影響是**零**。這正是那條規則的價值。

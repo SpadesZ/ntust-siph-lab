@@ -39,6 +39,21 @@ backups/
 *.db-wal
 *.db-shm
 
+# --- 遷移產出（scripts/export_sqlite.py 的輸出，見 deploy/cloudrun.md §4）---
+# tables/admin_users.json 含管理員密碼雜湊、audit_logs.json 含稽核紀錄，
+# 屬於資料庫內容的完整轉存，絕不進入版控。
+migration-package/
+media-sync-report.csv
+
+# --- 商務文件（不屬於本網站系統）---
+# 價值評估與請款相關的產生器與產出，自身標示為「機密與內部參考文件」。
+# 本 repo 是研究室網站的程式碼，未來可能交付校方；報價與請款資料
+# 不應出現在其中。這類檔案請放在 repo 之外。
+generate_valuation_pdf.py
+scripts/generate_valuation_pdf.py
+*價值評估*.pdf
+*請款*.pdf
+
 # --- Python ---
 .venv/
 venv/

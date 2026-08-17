@@ -21,7 +21,7 @@
 #   SAI 附錄 A Route Matrix 中所有 Public 路由的實作：
 #     /  /about  /members  /alumni  /people/<slug>
 #     /research  /research/<slug>  /join
-#     /sitemap.xml  /robots.txt  /healthz  /llms.txt
+#     /sitemap.xml  /robots.txt  /healthz  /health  /llms.txt
 #
 #   責任邊界（SAI §9.1，不得做的事）：
 #     - 不得直接寫 select()（一律經 repositories）。
@@ -55,6 +55,8 @@
 #   - 內容不存在或非 published -> abort(404)，由全域 handler
 #     先嘗試 redirect（SAI §9.2）。
 #   - /healthz 在 DB 異常時回 503（SAI 附錄 A：200/503）。
+#     /health 是同一個 handler 的別名，供外部監控使用
+#     （/healthz 為 Cloud Run 保留路徑，見該函式說明與 ADR-014）。
 #   - /llms.txt 在未啟用時回 404（避免提供空檔案）。
 #
 # 特殊機制（uploads 路由）：
@@ -422,10 +424,25 @@ def llms_txt():
 
 
 @public_bp.route("/healthz")
+@public_bp.route("/health")
 def healthz():
     """健康檢查（SAI §19、附錄 A：200/503）。
 
     回應內容刻意極簡，不含版本或環境資訊。
+
+    為什麼有 /health 這個別名（2026-08-17 上線實測發現）：
+      `/healthz` 是 Cloud Run 的保留路徑。Google Frontend 會在請求
+      抵達容器前就攔截並回自己的 404 頁，因此「從外部」呼叫
+      https://<service>.run.app/healthz 永遠拿不到本函式的回應，
+      Cloud Run 的 request log 裡也不會留下任何紀錄。
+
+      這個限制只影響外部呼叫：
+        - Cloud Run 的 startup/liveness probe 直連容器，不經 GFE  -> /healthz 可用
+        - Dockerfile 的 HEALTHCHECK 在容器內執行                  -> /healthz 可用
+        - 外部 uptime 監控、smoke test 走公開網址                 -> 必須用 /health
+
+      因此保留 /healthz（容器內契約不變，SAI §19 與附錄 A 不受影響），
+      另外掛 /health 供外部監控使用。詳見 ADR-014。
     """
     ok, status = HealthService.liveness()
     return Response(
