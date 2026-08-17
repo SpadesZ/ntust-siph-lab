@@ -78,6 +78,35 @@ def test_healthz_is_not_in_sitemap(client):
 
 
 # ----------------------------------------------------------------------
+# /health 別名（ADR-014：/healthz 為 Cloud Run 保留路徑）
+# ----------------------------------------------------------------------
+def test_health_alias_returns_200(client):
+    """外部監控用的別名必須存在。
+
+    為什麼需要這條測試：
+      Cloud Run 的 Google Frontend 會攔截 /healthz，外部永遠拿不到
+      應用程式的回應。若日後有人「清理重複路由」把 /health 拿掉，
+      正式環境的外部監控會靜默失效 —— 本機與容器內測試都看不出來，
+      因為那兩處的 /healthz 完全正常。
+    """
+    assert client.get("/health").status_code == 200
+
+
+def test_health_alias_matches_healthz(client):
+    """兩條路徑必須是同一個 handler，不得各自演化。"""
+    healthz = client.get("/healthz")
+    health = client.get("/health")
+    assert health.status_code == healthz.status_code
+    assert health.get_data(as_text=True) == healthz.get_data(as_text=True)
+    assert health.mimetype == healthz.mimetype
+
+
+def test_health_alias_is_not_in_sitemap(client):
+    """別名同樣不應被索引。"""
+    assert "/health" not in client.get("/sitemap.xml").get_data(as_text=True)
+
+
+# ----------------------------------------------------------------------
 # backup 狀態（SAI §7.2 System health）
 # ----------------------------------------------------------------------
 def test_last_backup_none_when_no_backups(app):
