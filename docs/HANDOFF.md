@@ -178,11 +178,16 @@ main  69fba38
  └── Merge: Cloud Run 部署與文件（feat/cloudrun-deployment）  7 個 commit
 ```
 
-| 分支 | 內容 | 狀態 |
-| --- | --- | --- |
-| `main` | 兩者的聯集 | ✅ 已推送 |
-| `feat/bilingual-toggle` | 中英切換功能 | ✅ 已併入 main（可刪除） |
-| `feat/cloudrun-deployment` | 部署、ADR、交接文件 | ✅ 已併入 main（可刪除） |
+**目前只有 `main` 一個分支**（本機與遠端皆是）。
+兩個功能分支合併後已刪除 —— 它們已落後 `main` 7～10 個 commit，
+留著只會讓人誤以為可以直接 checkout 繼續開發，
+而那些過期分支上沒有 `/health`、ADR，`.gitignore` 也缺少
+`migration-package/` 的保護規則。
+
+刪除不會遺失任何東西：所有 commit 都是 `main` 的祖先，
+`git log --graph` 仍看得出分支結構（因為合併時用了 `--no-ff`），
+合併 commit 的訊息也記錄了原始分支名稱。
+需要時可用 `git branch <名稱> <SHA>` 隨時重建。
 
 兩個分支**零檔案重疊**（已逐檔驗證），合併無衝突。
 
@@ -377,7 +382,6 @@ Flask-WTF 對 HTTPS 的 POST 會做 strict referer 檢查。
 | 輪替資料庫密碼 | Neon 連線字串曾顯示於協作對話中，建議重設 |
 | 輪替管理員密碼 | 2026-08-17 重設後的密碼曾顯示於對話中，建議管理者登入後自行更改 |
 | 修正 §7.3 的連線字串正規化 | 讓遷移腳本接受標準 `postgresql://` |
-| 刪除已合併的功能分支（選用） | 兩個分支都已完全併入 `main`，可安全刪除 |
 | 簽核後開放索引 | `ROBOTS_POLICY=public`（指令見 §6） |
 | 關閉舊 Google Sites | **等簽核完成**，依 `deploy/migration-runbook.md` |
 | 自訂網域 | 校方 DNS 就緒後設定，並同步改 `PUBLIC_BASE_URL` |
