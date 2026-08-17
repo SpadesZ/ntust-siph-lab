@@ -31,8 +31,75 @@ from app.config import (
     TestConfig,
     _env_bool,
     _normalize_database_url,
+    engine_options_for,
     get_config,
 )
+
+
+# ----------------------------------------------------------------------
+# Engine options 必須依實際 dialect 決定（Gate G2 回歸測試）
+# ----------------------------------------------------------------------
+# 這組測試對應一個「只有真的連上 PostgreSQL 才會出現」的缺陷：
+# LocalConfig/TestConfig 在 class 層級寫死 SQLite 專屬的
+# connect_args={"check_same_thread": ...}，指向 PostgreSQL 時
+# psycopg 會回 invalid connection option 而完全無法連線。
+#
+# 本機開發、SQLite 測試與靜態掃描都看不出來，
+# 因此把它固定成測試，避免日後又把 SQLite 參數寫回 class 層級。
+
+
+def test_sqlite_gets_sqlite_connect_args():
+    options = engine_options_for("sqlite:///instance/siph_lab.db")
+    assert options["connect_args"]["check_same_thread"] is False
+    assert options["connect_args"]["timeout"] == 15
+
+
+@pytest.mark.parametrize("url", [
+    "postgresql+psycopg://u:p@h/db",
+    "postgresql://u:p@h/db",
+])
+def test_postgres_never_receives_sqlite_connect_args(url):
+    """SQLite 專屬參數不得洩漏到 PostgreSQL（SAI §10.2）。"""
+    options = engine_options_for(url, base=TestConfig.SQLALCHEMY_ENGINE_OPTIONS)
+    connect_args = options.get("connect_args", {})
+    assert "check_same_thread" not in connect_args
+    assert "timeout" not in connect_args
+
+
+def test_postgres_keeps_pool_settings():
+    """移除 SQLite 參數時不得順手拿掉 PostgreSQL 需要的連線池設定。"""
+    options = engine_options_for(
+        "postgresql+psycopg://u:p@h/db",
+        base=ProductionConfig.SQLALCHEMY_ENGINE_OPTIONS,
+    )
+    assert options["pool_recycle"] == 1800
+    assert options["pool_size"] >= 1
+    assert options["pool_pre_ping"] is True
+
+
+def test_local_config_engine_options_are_postgres_safe():
+    """把 LocalConfig 的設定套到 PostgreSQL URL 後必須可用。"""
+    options = engine_options_for(
+        "postgresql+psycopg://u:p@h/db",
+        base=LocalConfig.SQLALCHEMY_ENGINE_OPTIONS,
+    )
+    assert "check_same_thread" not in options.get("connect_args", {})
+
+
+def test_create_app_recomputes_engine_options_for_overridden_url():
+    """config_overrides 指向 PostgreSQL 時，engine options 必須跟著換。
+
+    測試矩陣正是透過 config_overrides 切換資料庫的，
+    若這裡沒重算，-m postgres 會在建立連線時就失敗。
+    """
+    from app import create_app
+
+    app = create_app(
+        "test",
+        config_overrides={"SQLALCHEMY_DATABASE_URI": "postgresql+psycopg://u:p@h/db"},
+    )
+    connect_args = app.config["SQLALCHEMY_ENGINE_OPTIONS"].get("connect_args", {})
+    assert "check_same_thread" not in connect_args
 
 
 # ----------------------------------------------------------------------

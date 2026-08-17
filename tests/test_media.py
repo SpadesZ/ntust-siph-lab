@@ -232,3 +232,28 @@ def test_public_url_for_stored_object(app):
         url = MediaService.public_url(saved.key)
     assert url
     assert saved.key in url
+
+
+# ----------------------------------------------------------------------
+# 解壓炸彈（交付前審查 REV-107）
+# ----------------------------------------------------------------------
+# MAX_CONTENT_LENGTH 限制的是「壓縮後」大小，不是解碼後的記憶體。
+# 實測：12000x12000 純色 PNG 編碼後僅約 435 KB（遠低於 8 MB 上限），
+# 解碼卻需要約 432 MB —— 而 Pillow 在 89~179 MPx 之間只發
+# DecompressionBombWarning 不會拋錯。Cloud Run 預設記憶體 512 MiB，
+# 單一請求即可觸發 OOM 並重啟 instance。
+
+
+def test_decompression_bomb_rejected_before_decode(app):
+    """遠低於大小上限、但解碼後極大的影像必須被拒絕。"""
+    data = _image_bytes("PNG", size=(12000, 12000))
+
+    # 前提確認：這個檔案確實通過了大小檢查，
+    # 所以擋下它的必定是像素數檢查，而不是 MAX_CONTENT_LENGTH。
+    assert len(data) < 8 * 1024 * 1024
+
+    with app.app_context():
+        with pytest.raises(MediaError) as exc:
+            MediaService.save_image(_upload(data, "bomb.png", "image/png"), "people")
+
+    assert "百萬像素" in str(exc.value)

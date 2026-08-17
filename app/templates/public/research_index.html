@@ -36,33 +36,44 @@ NTUST SiPh Lab - Research Index (/research)
 #}
 {% extends "public/base.html" %}
 
-{% block breadcrumb_current %}研究成果{% endblock %}
+{% block breadcrumb_current %}{{ t('research_title') }}{% endblock %}
 
 {% block content %}
 <div class="container">
 
   <header class="section section--tight">
-    <span class="section-label">Research Outputs</span>
-    <h1 class="trace-underline">研究成果</h1>
+    <h1 class="trace-underline">{{ t('research_title') }}</h1>
     <p class="prose" style="max-width: var(--measure-narrow); margin-top: var(--space-5);">
-      {{ settings.lab_name_zh }}的期刊論文、會議論文、研究專案、原型系統與模擬研究。
-      每筆成果都說明其研究問題、方法、主要結果與意義。
+      {#
+        原文為「每筆成果都說明其研究問題、方法、主要結果與意義」，
+        但目前九筆摘要尚未包含這四段內容（待補正式 abstract）。
+        頁面不得承諾自己沒有的東西，故改為描述實際可用的功能。
+      #}
+      {{ t('research_intro', lab=settings.lab_name_zh) }}
     </p>
   </header>
 
   {# ---------- 篩選器（GET 表單，無需 JS） ---------- #}
   {% if available_types or available_years %}
   <form class="filter-bar" method="get" action="{{ url_for('public.research_index') }}"
-        role="search" aria-label="研究成果篩選">
+        role="search" aria-label="{{ t('filter_research') }}">
 
     {% if available_types %}
     <div class="filter-bar__field">
-      <label class="filter-bar__label" for="filter-type">成果類型</label>
+      <label class="filter-bar__label" for="filter-type">{{ t('output_type') }}</label>
       <select class="select" id="filter-type" name="type">
-        <option value="">全部類型</option>
-        {% for t in available_types %}
-        <option value="{{ t }}" {% if active_type == t %}selected{% endif %}>
-          {{ type_labels[t] }}
+        <option value="">{{ t('all_types') }}</option>
+        {#
+          迴圈變數命名為 type_key 而不是 t —— `t` 是 i18n 的翻譯函式，
+          在迴圈內用同名變數會把它遮蔽掉，之後在迴圈裡呼叫 t('...')
+          會變成對字串取索引而炸掉。這種錯誤只在有人新增字串時才發作。
+        #}
+        {% for type_key in available_types %}
+        {% set _label = type_labels[type_key] %}
+        {% set _label_lang = text_lang(_label) %}
+        <option value="{{ type_key }}" {% if active_type == type_key %}selected{% endif %}
+                {% if _label_lang %}lang="{{ _label_lang }}"{% endif %}>
+          {{ _label }}
         </option>
         {% endfor %}
       </select>
@@ -71,9 +82,9 @@ NTUST SiPh Lab - Research Index (/research)
 
     {% if available_years %}
     <div class="filter-bar__field">
-      <label class="filter-bar__label" for="filter-year">年份</label>
+      <label class="filter-bar__label" for="filter-year">{{ t('year') }}</label>
       <select class="select" id="filter-year" name="year">
-        <option value="">全部年份</option>
+        <option value="">{{ t('all_years') }}</option>
         {% for y in available_years %}
         <option value="{{ y }}" {% if active_year == y %}selected{% endif %}>{{ y }}</option>
         {% endfor %}
@@ -82,30 +93,34 @@ NTUST SiPh Lab - Research Index (/research)
     {% endif %}
 
     <div class="filter-bar__field" style="flex: 1; min-width: 180px;">
-      <label class="filter-bar__label" for="filter-q">關鍵字</label>
+      <label class="filter-bar__label" for="filter-q">{{ t('keyword') }}</label>
       <input class="input" type="search" id="filter-q" name="q"
-             value="{{ active_query or '' }}" placeholder="標題、摘要或關鍵字">
+             value="{{ active_query or '' }}" placeholder="{{ t('keyword_placeholder') }}">
     </div>
 
     <div class="filter-bar__field">
-      <button class="btn btn--primary" type="submit">套用篩選</button>
+      <button class="btn btn--primary" type="submit">{{ t('apply_filter') }}</button>
     </div>
 
     {% if active_type or active_year or active_query %}
     <div class="filter-bar__field">
-      <a class="btn btn--ghost" href="{{ url_for('public.research_index') }}">清除</a>
+      <a class="btn btn--ghost" href="{{ url_for('public.research_index') }}">{{ t('clear_filter') }}</a>
     </div>
     {% endif %}
   </form>
   {% endif %}
 
   {# ---------- 成果清單 ---------- #}
-  <section class="section section--tight" aria-labelledby="outputs-heading">
-    <h2 class="sr-only" id="outputs-heading">研究成果清單</h2>
-
+  {#
+    這裡原本有一個只給螢幕閱讀器的 <h2>「研究成果清單」，
+    但本頁只有這一個區塊，h1 已經是「研究成果」——
+    加上它只會讓螢幕閱讀器把同一件事唸兩次，
+    正是「資訊不要重複出現」要避免的情況，故連同 aria-labelledby 移除。
+  #}
+  <section class="section section--tight">
     {% if outputs %}
     <p class="section-label" style="margin-bottom: var(--space-6);">
-      共 {{ outputs | length }} 筆成果
+      {{ t('outputs_count_prefix') }}{{ outputs | length }}{{ t('outputs_count_suffix') }}
     </p>
 
     <ul class="stack-list">
@@ -113,24 +128,34 @@ NTUST SiPh Lab - Research Index (/research)
       <li>
         <article class="card">
           <div class="card__meta">
-            <span class="type-badge">{{ output.type_label_zh }}</span>
+            {% set _type_lang = text_lang(output.type_label) %}
+            <span class="type-badge"{% if _type_lang %} lang="{{ _type_lang }}"{% endif %}>{{ output.type_label }}</span>
             <span class="year-badge">{{ output.year }}</span>
             {% if output.venue %}<span>{{ output.venue }}</span>{% endif %}
           </div>
 
-          <h3 class="card__title">
+          {#
+            h2 而非 h3：本頁移除了原本那個只給螢幕閱讀器的 <h2> 之後，
+            這裡若維持 h3 就會從 h1 直接跳到 h3，違反 WCAG 1.3.1（Level A）。
+            成果卡是本頁 h1 之下的第一層內容，正確層級就是 h2。
+          #}
+          <h2 class="card__title" lang="{{ output.display_title_lang }}">
             <a href="{{ url_for('public.research_detail', slug=output.slug) }}">
               {{ output.display_title }}
             </a>
-          </h3>
+          </h2>
 
-          {% if output.title_en and output.title_zh %}
-          <p class="card__meta"><em>{{ output.title_en }}</em></p>
+          {# 主標題為原文時，這行是中文翻譯；反之則是英文名。 #}
+          {% if output.secondary_title %}
+          <p class="card__meta" lang="{{ output.secondary_title_lang }}">
+            {{ output.secondary_title }}
+          </p>
           {% endif %}
 
-          {% if output.summary_zh or output.summary_en %}
-          <p class="card__body">
-            {{ (output.summary_zh or output.summary_en) | truncate(160, true, '…') }}
+          {% set _summary, _summary_lang = localized(output, 'summary') %}
+          {% if _summary %}
+          <p class="card__body" lang="{{ _summary_lang }}">
+            {{ _summary | truncate(160, true, '…') }}
           </p>
           {% endif %}
 
@@ -138,7 +163,8 @@ NTUST SiPh Lab - Research Index (/research)
           {% if output.public_lab_people %}
           <p class="card__meta">
             {% for person in output.public_lab_people %}
-            <a href="{{ url_for('public.person_detail', slug=person.slug) }}">{{ person.name_zh }}</a>{% if not loop.last %}、{% endif %}
+            {% set _p_name, _p_name_lang = localized(person, 'name') %}
+            <a href="{{ url_for('public.person_detail', slug=person.slug) }}" lang="{{ _p_name_lang }}">{{ _p_name }}</a>{% if not loop.last %}、{% endif %}
             {% endfor %}
           </p>
           {% endif %}
@@ -146,7 +172,8 @@ NTUST SiPh Lab - Research Index (/research)
           {% if output.keywords %}
           <ul class="tag-list card__footer">
             {% for keyword in output.keywords[:5] %}
-            <li><span class="tag">{{ keyword }}</span></li>
+            {% set _kw_lang = text_lang(keyword) %}
+            <li><span class="tag"{% if _kw_lang %} lang="{{ _kw_lang }}"{% endif %}>{{ keyword }}</span></li>
             {% endfor %}
           </ul>
           {% endif %}
@@ -158,23 +185,19 @@ NTUST SiPh Lab - Research Index (/research)
     {% else %}
     <div class="empty-state">
       {% if active_type or active_year or active_query %}
-      <p class="empty-state__title">沒有符合篩選條件的成果</p>
+      <p class="empty-state__title">{{ t('no_matching_outputs') }}</p>
       <p>
-        請調整篩選條件，或
-        <a href="{{ url_for('public.research_index') }}">查看全部研究成果</a>。
+        {{ t('adjust_or') }}
+        <a href="{{ url_for('public.research_index') }}">{{ t('view_all_outputs') }}</a>。
       </p>
       {% else %}
-      <p class="empty-state__title">尚未發布研究成果</p>
-      <p>研究成果由管理者於後台新增並發布後，會在此顯示。</p>
+      <p class="empty-state__title">{{ t('no_outputs_published') }}</p>
       {% endif %}
     </div>
     {% endif %}
   </section>
 
-  <nav class="next-steps" aria-label="延伸瀏覽">
-    <a class="btn btn--primary" href="{{ url_for('public.members') }}">認識研究成員</a>
-    <a class="btn btn--secondary" href="{{ url_for('public.about') }}">了解研究方向</a>
-  </nav>
+  {# 與主導覽重複的頁尾按鈕已移除，理由同 about.html。 #}
 
 </div>
 {% endblock %}

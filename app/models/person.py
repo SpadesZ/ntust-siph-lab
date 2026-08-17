@@ -192,9 +192,11 @@ class Person(TimestampMixin, db.Model):
 
     # --- Legacy 遷移旗標 ---
     #: True 表示此人物由母站遷入但欄位尚未由 Lab 補齊。
-    #: 依 2026-08-14 管理者裁示，這類人物可在缺 research_focus 的情況下
+    #: 依 2026-08-16 管理者裁示，這類人物可在缺 research_focus 的情況下
     #: 發布（滿足 AC-23 四位成員必須可被找到），同時在 Admin Dashboard
-    #: 的 "Needs attention" 持續提醒補齊。詳見 docs/SAI.md ADR-012。
+    #: 的 "Needs attention" 持續提醒補齊。
+    #: 完整決策記錄見 docs/adr/ADR-012-legacy-pending-publish-exemption.md
+    #: （SAI 的 ADR 表僅到 ADR-011，本專案新增決策一律放 docs/adr/）。
     legacy_pending_detail: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     #: 對應 legacy/google_sites/migration_inventory.csv 的 legacy_id，
     #: 例如 "LC-015"。提供 verify_migration.py 做 old->new 對帳。
@@ -265,6 +267,39 @@ class Person(TimestampMixin, db.Model):
                 seen.add(text)
                 cleaned.append(text)
         self.skills_json = json.dumps(cleaned, ensure_ascii=False)
+
+    @property
+    def distinctive_skills(self) -> list[str]:
+        """只回傳「研究焦點文字裡沒講過」的 skills。
+
+        為什麼需要這個（設計審查發現）：
+          SAI §5.2 同時要求詳細頁有「研究焦點一句話」與
+          「Methods & Tools」，前提是兩者內容不同。但實際資料中
+          這兩個欄位常常是同一份清單 —— 例如教授的 research_focus_zh
+          是「光電感測技術、矽光子技術、…」，skills 又是同樣六項。
+          照樣渲染就會在同一個畫面把同一份資訊講兩次，
+          違反本專案「資訊不要重複出現」的首要原則。
+
+          在 model 這一層過濾而不是在 template 寫死條件，
+          是因為任何列出 skills 的頁面都該套用同一條規則
+          （person_detail、_person_card、未來的匯出）。
+
+        行為：
+          skills 中的字串若已完整出現在 research_focus_zh/en，
+          視為重複而濾除。全部重複時回傳空 list，
+          呼叫端據此隱藏整個區塊。
+        """
+        skills = self.skills
+        if not skills:
+            return []
+
+        haystack = " ".join(
+            filter(None, (self.research_focus_zh, self.research_focus_en))
+        ).lower()
+        if not haystack:
+            return skills
+
+        return [skill for skill in skills if skill.strip().lower() not in haystack]
 
     # ------------------------------------------------------------------
     # 顯示輔助

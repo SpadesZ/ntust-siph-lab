@@ -38,36 +38,48 @@ Legacy 對照（SAI §22.3 Old -> New Mapping）：
 #}
 {% extends "public/base.html" %}
 
-{% block breadcrumb_current %}關於研究室{% endblock %}
+{% block breadcrumb_current %}{{ t('about_the_lab') }}{% endblock %}
 
 {% block content %}
 <div class="container">
 
   <header class="section section--tight">
-    <span class="section-label">About</span>
-    <h1 class="trace-underline">關於 {{ settings.lab_name_zh }}</h1>
+    {% set _lab, _lab_lang = localized(settings, 'lab_name') %}
+    <h1 class="trace-underline">{{ t('about_title') }} <span lang="{{ _lab_lang }}">{{ _lab }}</span></h1>
 
-    {% if settings.about_intro_zh %}
-    <div class="prose prose--preserve" style="margin-top: var(--space-6);">
-      {{ settings.about_intro_zh }}
+    {#
+      刻意「不」fallback 到 settings.hero_intro_zh：
+      那句話是首頁 Hero 的定位句，若這裡也印一次，同一段文字
+      就會出現在 / 與 /about 兩頁。about_intro_zh 沒填時就不顯示，
+      本頁下方的「研究方向」本來就會說明研究室在做什麼。
+    #}
+    {% set _intro, _intro_lang = localized(settings, 'about_intro') %}
+    {% if _intro %}
+    <div class="prose prose--preserve" style="margin-top: var(--space-6);" lang="{{ _intro_lang }}">
+      {{ _intro }}
     </div>
-    {% elif settings.hero_intro_zh %}
-    <div class="prose" style="margin-top: var(--space-6);">{{ settings.hero_intro_zh }}</div>
     {% endif %}
 
     <dl class="meta-list" style="margin-top: var(--space-8); max-width: 620px;">
-      {% if settings.university_zh %}
-      <dt>所屬學校</dt>
+      {#
+        這幾列刻意中英並列，不隨語言切換只顯示一種。
+        機構的正式名稱在投稿、通信與查證時兩種寫法都會用到，
+        屬於「資料表」而不是「文章」—— 讀者要的是對照，不是翻譯。
+        並列時每一段都必須自己帶 lang，否則英文頁上的中文
+        會被當成英文唸（WCAG 3.1.2）。
+      #}
+      {% if settings.university_zh or settings.university_en %}
+      <dt>{{ t('affiliated_university') }}</dt>
       <dd>
-        {{ settings.university_zh }}
-        {% if settings.university_en %}<br><em>{{ settings.university_en }}</em>{% endif %}
+        {% if settings.university_zh %}<span lang="zh-Hant-TW">{{ settings.university_zh }}</span>{% endif %}
+        {% if settings.university_en %}<br><em lang="en">{{ settings.university_en }}</em>{% endif %}
       </dd>
       {% endif %}
-      {% if settings.department_zh %}
-      <dt>系所</dt>
+      {% if settings.department_zh or settings.department_en %}
+      <dt>{{ t('department') }}</dt>
       <dd>
-        {{ settings.department_zh }}
-        {% if settings.department_en %}<br><em>{{ settings.department_en }}</em>{% endif %}
+        {% if settings.department_zh %}<span lang="zh-Hant-TW">{{ settings.department_zh }}</span>{% endif %}
+        {% if settings.department_en %}<br><em lang="en">{{ settings.department_en }}</em>{% endif %}
       </dd>
       {% endif %}
       {#
@@ -82,11 +94,11 @@ Legacy 對照（SAI §22.3 Old -> New Mapping）：
 
   {# ---------- 指導教授（Legacy LC-002~LC-013 的落點） ---------- #}
   {% if faculty %}
+  {% set _fac_name, _fac_name_lang = localized(faculty, 'name') %}
   <section class="section section--tight" aria-labelledby="pi-heading">
     <div class="section-header">
       <div>
-        <span class="section-label">Principal Investigator</span>
-        <h2 class="section-title trace-underline" id="pi-heading">指導教授</h2>
+        <h2 class="section-title trace-underline" id="pi-heading">{{ t('principal_investigator') }}</h2>
       </div>
     </div>
 
@@ -94,7 +106,7 @@ Legacy 對照（SAI §22.3 Old -> New Mapping）：
       <div>
         {% if faculty.photo_path %}
         <img src="{{ media_url(faculty.photo_path) }}"
-             alt="{{ faculty.photo_alt_zh or (faculty.name_zh ~ ' 照片') }}"
+             alt="{{ faculty.photo_alt_zh or (_fac_name ~ ' ' ~ t('photo_suffix')) }}"
              width="320" height="384"
              style="width: 100%; max-width: 320px; border-radius: var(--radius-md); object-fit: cover;"
              loading="lazy">
@@ -103,56 +115,62 @@ Legacy 對照（SAI §22.3 Old -> New Mapping）：
 
       <div class="prose">
         <h3 style="margin-bottom: var(--space-1);">
-          <a href="{{ url_for('public.person_detail', slug=faculty.slug) }}">{{ faculty.name_zh }}</a>
+          <a href="{{ url_for('public.person_detail', slug=faculty.slug) }}"
+             lang="{{ _fac_name_lang }}">{{ _fac_name }}</a>
         </h3>
-        {% if faculty.name_en %}
-        <p class="person-hero__role">{{ faculty.name_en }}</p>
+        {% set _fac_alt_name = faculty.name_zh if lang == 'en' and faculty.name_en else faculty.name_en %}
+        {% if _fac_alt_name and _fac_alt_name != _fac_name %}
+        <p class="person-hero__role"
+           lang="{{ text_lang(_fac_alt_name) or 'en' }}">{{ _fac_alt_name }}</p>
         {% endif %}
 
         {#
           教授簡介。母站只提供姓名/職稱/學歷/專長，沒有敘述性介紹，
           因此這裡沒有預設內容 —— 依 SAI §2.3 不得由系統代筆。
-          管理者於後台「研究成員 → 楊淳良 → 簡介」填寫後即會顯示。
+          （簡介尚未提供。）
           留空時整段不出現，不會產生空白區塊。
         #}
-        {% if faculty.bio_zh %}
-        <div class="prose prose--preserve" style="margin-bottom: var(--space-6);">
-          {{ faculty.bio_zh }}
+        {% set _fac_bio, _fac_bio_lang = localized(faculty, 'bio') %}
+        {% if _fac_bio %}
+        <div class="prose prose--preserve" style="margin-bottom: var(--space-6);"
+             lang="{{ _fac_bio_lang }}">
+          {{ _fac_bio }}
         </div>
         {% endif %}
 
         <dl class="meta-list">
-          {% if faculty.title_zh %}
-          <dt>職稱</dt>
+          {% if faculty.title_zh or faculty.title_en %}
+          <dt>{{ t('job_title') }}</dt>
           <dd>
-            {{ faculty.title_zh }}
-            {% if faculty.title_en %}<br><em>{{ faculty.title_en }}</em>{% endif %}
+            {% if faculty.title_zh %}<span lang="zh-Hant-TW">{{ faculty.title_zh }}</span>{% endif %}
+            {% if faculty.title_en %}<br><em lang="en">{{ faculty.title_en }}</em>{% endif %}
           </dd>
           {% endif %}
 
-          {% if faculty.education_zh %}
-          <dt>學歷</dt>
+          {% if faculty.education_zh or faculty.education_en %}
+          <dt>{{ t('education') }}</dt>
           <dd>
-            {{ faculty.education_zh }}
-            {% if faculty.education_en %}<br><em>{{ faculty.education_en }}</em>{% endif %}
+            {% if faculty.education_zh %}<span lang="zh-Hant-TW">{{ faculty.education_zh }}</span>{% endif %}
+            {% if faculty.education_en %}<br><em lang="en">{{ faculty.education_en }}</em>{% endif %}
           </dd>
           {% endif %}
 
-          {% if faculty.research_focus_zh %}
-          <dt>研究專長</dt>
-          <dd>{{ faculty.research_focus_zh }}</dd>
-          {% endif %}
-
+          {#
+            這裡原本有一列「研究專長」，內容與本頁下方「研究方向」
+            六個項目完全相同，同一頁講兩次。
+            研究方向的正式位置在下方那一節（有中英文與說明），
+            故此列移除。
+          #}
           {% if faculty.email_public %}
           <dt>Email</dt>
           <dd><a href="mailto:{{ faculty.email_public }}">{{ faculty.email_public }}</a></dd>
           {% endif %}
 
           {% if faculty.external_url %}
-          <dt>官方頁面</dt>
+          <dt>{{ t('official_page') }}</dt>
           <dd>
             <a href="{{ faculty.external_url }}" rel="noopener">
-              {{ faculty.external_url_label or 'NTUST 官方頁面' }}
+              {{ faculty.external_url_label or t('ntust_official_page') }}
             </a>
           </dd>
           {% endif %}
@@ -161,7 +179,7 @@ Legacy 對照（SAI §22.3 Old -> New Mapping）：
         <p style="margin-top: var(--space-6);">
           <a class="btn btn--secondary btn--small"
              href="{{ url_for('public.person_detail', slug=faculty.slug) }}">
-            查看完整個人頁面 →
+            {{ t('view_full_profile') }}
           </a>
         </p>
       </div>
@@ -175,10 +193,9 @@ Legacy 對照（SAI §22.3 Old -> New Mapping）：
   <section class="section section--tight" aria-labelledby="focus-heading">
     <div class="section-header">
       <div>
-        <span class="section-label">Research Focus</span>
-        <h2 class="section-title trace-underline" id="focus-heading">研究方向</h2>
+        <h2 class="section-title trace-underline" id="focus-heading">{{ t('research_focus') }}</h2>
       </div>
-      <a class="section-link" href="{{ url_for('public.research_index') }}">相關成果 →</a>
+      <a class="section-link" href="{{ url_for('public.research_index') }}">{{ t('related_outputs_link') }}</a>
     </div>
 
     {% if research_focus %}
@@ -187,12 +204,19 @@ Legacy 對照（SAI §22.3 Old -> New Mapping）：
       <div class="focus-item">
         <span class="ring-marker" aria-hidden="true"></span>
         <div>
-          <h3 class="focus-item__title">{{ item.title_zh }}</h3>
+          <h3 class="focus-item__title" lang="zh-Hant-TW">{{ item.title_zh }}</h3>
+          {#
+            lang="en"：這是頁面上唯一一段純英文的實質內容
+            （description_zh 目前為空），中文語音合成唸它會變成雜訊。
+            WCAG 3.1.2 Language of Parts。
+            注意：專有名詞與縮寫（人名、期刊名、WDM-PON 等）依 3.1.2
+            屬豁免範圍，不要一併標記。
+          #}
           {% if item.title_en %}
-          <p class="focus-item__desc"><em>{{ item.title_en }}</em></p>
+          <p class="focus-item__desc"><em lang="en">{{ item.title_en }}</em></p>
           {% endif %}
           {% if item.description_zh %}
-          <p class="focus-item__desc">{{ item.description_zh }}</p>
+          <p class="focus-item__desc" lang="zh-Hant-TW">{{ item.description_zh }}</p>
           {% endif %}
         </div>
       </div>
@@ -200,22 +224,21 @@ Legacy 對照（SAI §22.3 Old -> New Mapping）：
     </div>
     {% else %}
     <div class="empty-state">
-      <p class="empty-state__title">研究方向尚未設定</p>
-      <p>管理者可於後台「網站設定 → 首頁」新增研究主題。</p>
+      <p class="empty-state__title">{{ t('focus_not_public') }}</p>
     </div>
     {% endif %}
   </section>
 
   {# ---------- 研究方法與設備 ---------- #}
-  {% if settings.about_methods_zh %}
+  {% set _methods, _methods_lang = localized(settings, 'about_methods') %}
+  {% if _methods %}
   <section class="section section--tight" aria-labelledby="methods-heading">
     <div class="section-header">
       <div>
-        <span class="section-label">Methods &amp; Facilities</span>
-        <h2 class="section-title trace-underline" id="methods-heading">研究方法與設備</h2>
+        <h2 class="section-title trace-underline" id="methods-heading">{{ t('methods_and_facilities') }}</h2>
       </div>
     </div>
-    <div class="prose prose--preserve">{{ settings.about_methods_zh }}</div>
+    <div class="prose prose--preserve" lang="{{ _methods_lang }}">{{ _methods }}</div>
   </section>
   {% endif %}
 
@@ -224,10 +247,13 @@ Legacy 對照（SAI §22.3 Old -> New Mapping）：
     不在各頁重複放 CTA —— 每頁都出現同一顆招募按鈕，
     既佔版面也稀釋了各頁真正的下一步（見 home.html 末的 IA 說明）。
   #}
-  <nav class="next-steps" aria-label="延伸瀏覽">
-    <a class="btn btn--primary" href="{{ url_for('public.members') }}">研究成員</a>
-    <a class="btn btn--secondary" href="{{ url_for('public.research_index') }}">研究成果</a>
-  </nav>
+  {#
+    原本這裡有一組按鈕連往「研究成員」與「研究成果」。
+    兩者都固定顯示在每頁頂端的主導覽，全站也只有六頁；
+    在頁尾把導覽再列一次不會讓任何人更快找到東西，
+    只是把同一組連結在同一畫面出現兩次。
+    依「資訊不要重複出現」移除。
+  #}
 
 </div>
 {% endblock %}

@@ -40,51 +40,98 @@ SAI §5.2 列表卡規格對照：
   pytest tests/test_people.py::test_member_card_fields
 ============================================================
 #}
+{#
+  語言處理原則（全卡片適用）：
+  每一段文字都必須帶著「它實際是什麼語言」一起輸出。
+  多數學生尚未填 *_en，因此英文版的卡片幾乎都是回退的中文；
+  回退本身沒問題（SAI §2.3 禁止自動生成英文），但不標記就
+  會讓螢幕閱讀器以英文發音規則唸中文（WCAG 3.1.2）。
+#}
+{% set _name, _name_lang = localized(person, 'name') %}
+{% set _title, _title_lang = localized(person, 'title') %}
 <article class="person-card">
   {% if person.photo_path %}
   <img class="person-card__photo"
        src="{{ media_url(person.photo_path) }}"
-       alt="{{ person.photo_alt_zh or (person.name_zh ~ ' 照片') }}"
+       alt="{{ person.photo_alt_zh or (_name ~ ' ' ~ t('photo_suffix')) }}"
        width="96" height="96" loading="lazy">
   {% else %}
   {# 佔位符不是資訊圖，以 aria-hidden 排除於無障礙樹之外 #}
   <div class="person-card__photo person-card__photo--placeholder" aria-hidden="true">
-    {{ person.name_zh[0] if person.name_zh else '·' }}
+    {{ _name[0] if _name else '·' }}
   </div>
   {% endif %}
 
   <div>
     <h3 class="person-card__name">
-      <a href="{{ url_for('public.person_detail', slug=person.slug) }}">
-        {{ person.name_zh }}
+      <a href="{{ url_for('public.person_detail', slug=person.slug) }}" lang="{{ _name_lang }}">
+        {{ _name }}
       </a>
     </h3>
 
+    {#
+      副標＝「另一個語言的姓名 · 職稱 · 畢業年」。
+      逐段各自帶 lang，因為這一行常常中英夾雜
+      （英文版可能出現 "楊淳良 · Associate Professor"）。
+    #}
+    {% set _alt_name = person.name_zh if lang == 'en' and person.name_en else person.name_en %}
     <p class="person-card__role">
       {%- set role_parts = [] -%}
-      {%- if person.name_en %}{% set _ = role_parts.append(person.name_en) %}{% endif -%}
-      {%- if person.title_zh %}{% set _ = role_parts.append(person.title_zh) %}{% endif -%}
-      {%- if person.degree and not person.title_zh %}{% set _ = role_parts.append(person.degree) %}{% endif -%}
-      {%- if person.status == 'alumni' and person.graduation_year -%}
-        {% set _ = role_parts.append(person.graduation_year ~ ' 年畢業') %}
+      {%- if _alt_name and _alt_name != _name -%}
+        {% set _ = role_parts.append((_alt_name, text_lang(_alt_name) or 'en')) %}
       {%- endif -%}
-      {{ role_parts | join(' · ') }}
+      {%- if _title %}{% set _ = role_parts.append((_title, _title_lang)) %}{% endif -%}
+      {%- if person.degree and not _title -%}
+        {% set _ = role_parts.append((person.degree, text_lang(person.degree))) %}
+      {%- endif -%}
+      {%- if person.status == 'alumni' and person.graduation_year -%}
+        {% set _ = role_parts.append((t('graduated_in', year=person.graduation_year), none)) %}
+      {%- endif -%}
+      {%- for part_text, part_lang in role_parts -%}
+        {%- if not loop.first %} · {% endif -%}
+        <span{% if part_lang %} lang="{{ part_lang }}"{% endif %}>{{ part_text }}</span>
+      {%- endfor -%}
     </p>
 
-    {% if person.research_focus_zh or person.research_focus_en %}
-    <p class="person-card__focus">
-      {{ person.research_focus_zh or person.research_focus_en }}
+    {#
+      SAI §5.2 規定列表卡只放「1-2 行研究焦點」。
+      教授的 research_focus 是完整六項清單，整串印出會佔四五行，
+      且與同一頁的研究方向區塊重複同樣六個詞。
+
+      以「、」為界取前兩項，而不是按字數截斷 ——
+      按字數會切在詞中間（實際發生過：「…物聯網平…」），
+      既不好讀也讓人以為資料壞掉。英文的 focus 沒有「、」，
+      split 會得到單一元素，自然走完整顯示那一支。
+    #}
+    {% set _focus, _focus_lang = localized(person, 'research_focus') %}
+    {% if _focus %}
+    {% set _parts = _focus.split('、') %}
+    <p class="person-card__focus" lang="{{ _focus_lang }}">
+      {#- 「等」在中文緊接前詞，中間不留空白。 -#}
+      {%- if _parts | length > 2 -%}
+        {{ _parts[:2] | join('、') }}{{ t('focus_and_more', n=_parts | length) }}
+      {%- else -%}
+        {{ _focus }}
+      {%- endif -%}
     </p>
     {% endif %}
 
-    {% if person.skills %}
-    {# SAI §5.2：2-4 個技能/主題 tag #}
+    {#
+      SAI §5.2：2-4 個技能/主題 tag。
+      使用 distinctive_skills 而非 skills —— 只顯示上面那行研究焦點
+      沒講過的項目。教授的 skills 與 research_focus 是同一份六項清單，
+      照列會讓同一張卡片把同樣六個詞講兩次。
+
+      skills 欄位沒有中英分版，因此逐項以 text_lang 判斷語言。
+    #}
+    {% if person.distinctive_skills %}
     <ul class="tag-list">
-      {% for skill in person.skills[:4] %}
-      <li><span class="tag">{{ skill }}</span></li>
+      {% for skill in person.distinctive_skills[:4] %}
+      {% set _skill_lang = text_lang(skill) %}
+      <li><span class="tag"{% if _skill_lang %} lang="{{ _skill_lang }}"{% endif %}>{{ skill }}</span></li>
       {% endfor %}
-      {% if person.skills | length > 4 %}
-      <li><span class="tag">+{{ person.skills | length - 4 }}</span></li>
+      {% if person.distinctive_skills | length > 4 %}
+      <li><span class="tag">+{{ person.distinctive_skills | length - 4 }}</span></li>
       {% endif %}
     </ul>
     {% endif %}

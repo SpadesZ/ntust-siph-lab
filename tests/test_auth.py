@@ -453,3 +453,39 @@ def test_change_password_rejects_mismatched_confirmation(logged_in_client):
     )
     assert response.status_code == 200
     assert "不一致" in response.get_data(as_text=True)
+
+
+# ----------------------------------------------------------------------
+# Open redirect 防護（交付前審查 REV-108）
+# ----------------------------------------------------------------------
+# 依 WHATWG URL 規範，在 http/https 這類 special scheme 下 "\" 等同 "/"，
+# 因此 "/\evil.example" 在瀏覽器眼中就是 "//evil.example"（離站）。
+# 但 Python 的 urlparse 不做這個轉換，netloc 會是空字串 ——
+# 這個認知落差就是繞過點。
+#
+# 該字串目前因為 Werkzeug 會把 Location 百分比編碼成 "%5C" 而恰好
+# 不可利用，但那是下游函式庫的行為，不是這個守衛函式做對了。
+# 把規則固定成測試，避免日後有人「簡化」掉這個檢查。
+
+
+@pytest.mark.parametrize("target", [
+    "/\\evil.example",
+    "/\\/evil.example",
+    "//evil.example",
+    "https://evil.example",
+    "http://evil.example",
+    "\\\\evil.example",
+])
+def test_unsafe_next_targets_rejected(target):
+    """任何會離站的 ?next= 目標都必須被拒絕。"""
+    from app.blueprints.auth.routes import _is_safe_next
+
+    assert _is_safe_next(target) is False, f"{target!r} 不應被視為安全的站內路徑"
+
+
+@pytest.mark.parametrize("target", ["/admin", "/admin/people", "/research/abc"])
+def test_safe_next_targets_accepted(target):
+    """正常的站內相對路徑必須仍可用（不得矯枉過正）。"""
+    from app.blueprints.auth.routes import _is_safe_next
+
+    assert _is_safe_next(target) is True
