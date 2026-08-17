@@ -3,7 +3,7 @@
 > 本檔由 `python scripts/verify_migration.py` 自動產生，請勿手動編輯。
 > 手動修改會與實際驗證結果脫節，違反 ADR-011 的證據鏈要求。
 
-- 產生時間：2026-08-15T12:52:00.098241+08:00
+- 產生時間：2026-08-16T23:17:00.451824+08:00
 - 母站來源：https://sites.google.com/view/ntust-siph-lab/
 - 盤點時間：2026-08-15T00:00:00+08:00
 - Inventory 總筆數：19
@@ -16,7 +16,9 @@
 | MIGRATED | 18 |
 | **UNRESOLVED（含驗證失敗）** | **0** |
 
-> **狀態：可進行 cutover。** UNRESOLVED = 0，AC-21~AC-26 全數通過。
+> **狀態：自動檢查通過，但尚未取得人工簽核，仍不得 cutover。**
+> content_signoff.md §5 尚未完成：6 個確認項未勾選、12 個簽核欄位仍為空白。
+> 依 SAI §21.1 G6 與 §22.6，content sign-off 完成才是 launch 的必要條件。
 
 ## 2. 驗收項目檢查結果
 
@@ -74,7 +76,7 @@
 通過 3 項：
 
 - LC-002 原始資產 checksum 相符（1d46458f9eace22e…，40847 bytes）
-- LC-002：照片已存在於 storage（local），object key=people/715eb8e46a514e629f75e9e8e11eaf70.jpg
+- LC-002：照片已存在於 storage（local），object key=people/67f1d4a69b5844b1842adf80c9862413.jpg
 - LC-002：照片替代文字已設定（楊淳良副教授照片）
 
 ### ✅ AC-25 — 平台元素排除與 embed 決策
@@ -88,7 +90,7 @@
 
 通過 7 項：
 
-- 筆數：people=5、research_outputs=0、research_output_people=0
+- 筆數：people=5、research_outputs=9、research_output_people=9
 - people.slug 全部唯一
 - research_outputs.slug 全部唯一
 - people.slug 無空值

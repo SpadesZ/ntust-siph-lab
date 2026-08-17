@@ -133,16 +133,34 @@ class LoginForm(FlaskForm):
 
 
 def _is_safe_next(target: str | None) -> bool:
-    """判斷 ?next= 是否為安全的站內相對路徑。
+    r"""判斷 ?next= 是否為安全的站內相對路徑。
 
     規則：
       - 必須以 "/" 開頭（站內絕對路徑）。
       - 不得以 "//" 開頭（那是 protocol-relative URL，會離站）。
+      - 不得包含反斜線（見下方說明）。
       - 不得包含 scheme 或 netloc。
+
+    為什麼要另外擋反斜線（交付前審查 REV-108）：
+      依 WHATWG URL 規範，在 http/https 這類 "special scheme" 下，
+      URL 解析器會把 "\" 視同 "/"。因此 "/\evil.example" 在瀏覽器
+      眼中等於 "//evil.example" —— 一個 protocol-relative URL，
+      會直接離站。但 Python 的 urlparse「不」做這個轉換：
+        urlparse("/\\evil.example").netloc == ""   -> 看起來安全
+      兩者的認知差異就是繞過點。
+
+      目前這個字串實際上不可利用，因為 Werkzeug 會把 Location
+      百分比編碼成 "/%5Cevil.example"，而 "%5C" 不會被解析成
+      路徑分隔符。但那是「下游函式庫剛好救了我們」，不是這個
+      守衛函式做對了 —— 換個 Werkzeug 版本或關掉
+      autocorrect_location_header 就會變成真的開放轉址。
+      安全檢查不應依賴呼叫端之外的偶然行為。
 
     見檔頭「特殊機制（open redirect 防護）」。
     """
     if not target:
+        return False
+    if "\\" in target:
         return False
     if not target.startswith("/") or target.startswith("//"):
         return False

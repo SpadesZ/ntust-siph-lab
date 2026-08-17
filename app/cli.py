@@ -371,6 +371,31 @@ def register_cli_commands(app) -> None:
         for line in summary:
             click.echo(f"  {line}")
 
+    @seed_cli.command("editorial")
+    @click.option(
+        "--force",
+        is_flag=True,
+        default=False,
+        help="連已有內容的欄位也覆寫（會蓋掉管理者在後台的修改）。",
+    )
+    def seed_editorial(force: bool):
+        """匯入編輯文案（首頁導言、關於研究室導言）。
+
+        與 `seed legacy`、`seed publications` 又是不同來源：
+        這些句子母站沒有，是依既有可查證資料撰寫的文案。
+        每一則的依據記在 scripts/seed_editorial.py 的 provenance 註解，
+        核准紀錄在 legacy/google_sites/content_signoff.md §2.3。
+
+        預設不覆寫已有內容 —— 管理者在後台改過的文字優先於本檔。
+        """
+        from scripts.seed_editorial import run_seed as run_editorial_seed
+
+        summary = run_editorial_seed(force=force)
+        db.session.commit()
+        click.secho("✔ 編輯文案匯入完成：", fg="green")
+        for line in summary:
+            click.echo(f"  {line}")
+
     app.cli.add_command(admin_cli)
     app.cli.add_command(check_cli)
     app.cli.add_command(seed_cli)

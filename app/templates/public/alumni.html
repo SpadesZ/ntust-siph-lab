@@ -35,64 +35,79 @@ NTUST SiPh Lab - Alumni Page (/alumni)
 #}
 {% extends "public/base.html" %}
 
-{% block breadcrumb_current %}畢業生{% endblock %}
+{% block breadcrumb_current %}{{ t('alumni_title') }}{% endblock %}
 
 {% block content %}
 <div class="container">
 
   <header class="section section--tight">
-    <span class="section-label">Alumni</span>
-    <h1 class="trace-underline">畢業生</h1>
+    <h1 class="trace-underline">{{ t('alumni_title') }}</h1>
+    {# 沒有資料時不要先描述一份不存在的清單。 #}
+    {% if alumni_groups %}
     <p class="prose" style="max-width: var(--measure-narrow); margin-top: var(--space-5);">
-      {{ settings.lab_name_zh }}歷屆畢業生與其論文題目，依畢業年度排列。
-      點選姓名可查看該位畢業生的研究方向與相關研究成果。
+      {{ t('alumni_intro', lab=settings.lab_name_zh) }}
     </p>
+    {% endif %}
   </header>
 
-  <section class="section section--tight" aria-labelledby="alumni-list-heading">
-    <h2 class="sr-only" id="alumni-list-heading">畢業生年度列表</h2>
-
+  {# sr-only 標題已移除，理由同 research_index.html。 #}
+  <section class="section section--tight">
     {% if alumni_groups %}
       {% for year, group in alumni_groups %}
       <section class="year-group" aria-labelledby="year-{{ year or 'unspecified' }}">
         <div class="year-group__heading">
-          <h3 class="year-group__year" id="year-{{ year or 'unspecified' }}">
-            {{ year if year else '年度未標示' }}
-          </h3>
-          <span class="year-group__count">{{ group | length }} 位</span>
+          {#
+            h2 而非 h3：本頁移除 sr-only <h2> 後，年度分組是 h1 底下的
+            第一層，維持 h3 會造成跳級（WCAG 1.3.1 Level A）。
+            此頁目前無資料，問題不會顯現 —— 一旦有畢業生就會出現，
+            因此先修正。
+          #}
+          <h2 class="year-group__year" id="year-{{ year or 'unspecified' }}">
+            {{ year if year else t('year_unspecified') }}
+          </h2>
+          <span class="year-group__count">{{ t('count_people_paren', n=group | length) }}</span>
         </div>
 
         <ul class="stack-list">
           {% for person in group %}
+          {% set _name, _name_lang = localized(person, 'name') %}
+          {% set _alt_name = person.name_zh if lang == 'en' and person.name_en else person.name_en %}
+          {% set _thesis, _thesis_lang = localized(person, 'thesis_title') %}
+          {% set _focus, _focus_lang = localized(person, 'research_focus') %}
           <li>
             <article class="card">
-              <h4 class="card__title">
-                <a href="{{ url_for('public.person_detail', slug=person.slug) }}">
-                  {{ person.name_zh }}
+              {# 年度分組已提升為 h2，此處隨之由 h4 提升為 h3，維持連續層級。 #}
+              <h3 class="card__title">
+                <a href="{{ url_for('public.person_detail', slug=person.slug) }}"
+                   lang="{{ _name_lang }}">
+                  {{ _name }}
                 </a>
-                {% if person.name_en %}
-                <span class="person-card__role">{{ person.name_en }}</span>
+                {% if _alt_name and _alt_name != _name %}
+                <span class="person-card__role"
+                      lang="{{ text_lang(_alt_name) or 'en' }}">{{ _alt_name }}</span>
                 {% endif %}
-              </h4>
+              </h3>
 
               <dl class="meta-list" style="margin-top: var(--space-3);">
                 {% if person.degree %}
-                <dt>學位</dt><dd>{{ person.degree }}</dd>
+                <dt>{{ t('degree') }}</dt>
+                <dd{% if text_lang(person.degree) %} lang="{{ text_lang(person.degree) }}"{% endif %}>{{ person.degree }}</dd>
                 {% endif %}
 
-                {% if person.thesis_title_zh or person.thesis_title_en %}
-                <dt>論文題目</dt>
-                <dd>{{ person.thesis_title_zh or person.thesis_title_en }}</dd>
-                {% elif person.research_focus_zh or person.research_focus_en %}
-                <dt>研究主題</dt>
-                <dd>{{ person.research_focus_zh or person.research_focus_en }}</dd>
+                {% if _thesis %}
+                <dt>{{ t('thesis_title') }}</dt>
+                <dd lang="{{ _thesis_lang }}">{{ _thesis }}</dd>
+                {% elif _focus %}
+                <dt>{{ t('research_topic') }}</dt>
+                <dd lang="{{ _focus_lang }}">{{ _focus }}</dd>
                 {% endif %}
               </dl>
 
               {% if person.skills %}
               <ul class="tag-list card__footer">
                 {% for skill in person.skills[:4] %}
-                <li><span class="tag">{{ skill }}</span></li>
+                {% set _skill_lang = text_lang(skill) %}
+                <li><span class="tag"{% if _skill_lang %} lang="{{ _skill_lang }}"{% endif %}>{{ skill }}</span></li>
                 {% endfor %}
               </ul>
               {% endif %}
@@ -104,20 +119,20 @@ NTUST SiPh Lab - Alumni Page (/alumni)
       {% endfor %}
 
     {% else %}
+    {#
+      空狀態必須說清楚「還沒建立」而不是「這個研究室沒有畢業生」。
+      這兩件事對畢業生（SAI §3 的第四類訪客）意義完全不同，
+      而這個區別在全站其他任何地方都沒有講過 —— 因此說明它不算重複。
+      母站未提供畢業生資料，此處僅陳述該事實，不推測人數或年份。
+    #}
     <div class="empty-state">
-      <p class="empty-state__title">尚未發布畢業生資料</p>
-      <p>
-        當在學成員完成學業後，管理者可於後台將其轉為畢業生，
-        該成員即會出現在此頁面（其個人網址與研究成果關聯不會變動）。
-      </p>
+      <p class="empty-state__title">{{ t('alumni_empty_title') }}</p>
+      <p>{{ t('alumni_empty_body') }}</p>
     </div>
     {% endif %}
   </section>
 
-  <nav class="next-steps" aria-label="延伸瀏覽">
-    <a class="btn btn--primary" href="{{ url_for('public.members') }}">在學研究成員</a>
-    <a class="btn btn--secondary" href="{{ url_for('public.research_index') }}">研究成果</a>
-  </nav>
+  {# 與主導覽重複的頁尾按鈕已移除，理由同 about.html。 #}
 
 </div>
 {% endblock %}

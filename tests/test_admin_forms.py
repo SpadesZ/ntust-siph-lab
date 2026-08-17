@@ -209,3 +209,52 @@ def test_forms_do_not_commit_database():
         and node.func.attr == "commit"
     ]
     assert not offenders, f"forms.py 不得 commit DB（行 {offenders}）"
+
+
+def test_image_upload_fields_declare_accept(app):
+    """所有圖片上傳欄位都要有 accept，且內容與伺服器端的白名單一致。
+
+    accept 只是選檔視窗的提示，不是防線；但兩者不一致會很難查：
+    管理者選得到 .heic 卻存不進去，或反過來明明支援 .webp
+    卻在選檔視窗被灰掉。
+    """
+    from app.blueprints.admin.forms import (
+        _IMAGE_ACCEPT,
+        _IMAGE_EXTENSIONS,
+        PersonForm,
+        ResearchForm,
+        SiteSettingForm,
+    )
+
+    assert set(_IMAGE_ACCEPT.split(",")) == {f".{ext}" for ext in _IMAGE_EXTENSIONS}
+
+    with app.test_request_context():
+        cases = [
+            (PersonForm(), ["photo"]),
+            (ResearchForm(), ["hero_image"]),
+            (SiteSettingForm(), ["logo", "hero_media", "og_image"]),
+        ]
+        for form, names in cases:
+            for name in names:
+                markup = str(getattr(form, name)())
+                assert f'accept="{_IMAGE_ACCEPT}"' in markup, (
+                    f"{type(form).__name__}.{name} 缺少 accept 屬性：{markup}"
+                )
+
+
+def test_person_photo_upload_is_available_for_every_status(app):
+    """照片欄位不依人物狀態而異 —— 在學生與畢業生用的是同一份表單。
+
+    使用者問過「畢業生是否也能上傳頭像」。答案來自這裡：
+    PersonForm 沒有任何依 status 分支的欄位定義，
+    因此 /admin/people/<id>/edit 對四種狀態都提供相同的照片欄位。
+    """
+    from app.blueprints.admin.forms import PersonForm
+    from app.models.mixins import PersonStatus
+
+    with app.test_request_context():
+        form = PersonForm()
+        for status in PersonStatus.ALL:
+            form.status.data = status
+            assert form.photo is not None
+            assert form.photo_alt_zh is not None

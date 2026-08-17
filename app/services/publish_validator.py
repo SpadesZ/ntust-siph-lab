@@ -175,8 +175,10 @@ class PublishValidator:
         has_focus = bool(person.research_focus_zh or person.research_focus_en)
         if not has_focus:
             if person.legacy_pending_detail:
-                # 母站遷入且尚未補齊者：依 2026-08-14 管理者裁示豁免，
+                # 母站遷入且尚未補齊者：依 2026-08-16 管理者裁示豁免
+                # （docs/adr/ADR-012-legacy-pending-publish-exemption.md），
                 # 但必須持續以 warning 提醒（見檔頭維護契約）。
+                # 豁免僅限研究焦點一項，不得擴及姓名/slug/照片 alt。
                 result.add_warning(
                     "research_focus_zh",
                     "此人物由母站遷入，研究焦點尚未補齊（已依核准豁免發布門檻，"

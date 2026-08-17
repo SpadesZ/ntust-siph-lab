@@ -282,14 +282,74 @@ class ResearchOutput(TimestampMixin, db.Model):
         return OutputType.LABELS_EN.get(self.output_type, OutputType.LABELS_EN[OutputType.OTHER])
 
     @property
-    def display_title(self) -> str:
-        """優先中文標題，缺則英文，皆缺則以 slug 兜底。
+    def type_label(self) -> str:
+        """依當前介面語言的型別標籤。
 
-        為什麼要兜底：
+        供 template 直接使用，避免每個 badge 都寫
+        `{{ 'x' if lang == 'en' else 'y' }}` 這種條件式 ——
+        那會讓語言判斷散落在十幾個地方。
+        """
+        from app.i18n import get_lang
+
+        return self.type_label_en if get_lang() == "en" else self.type_label_zh
+
+    @property
+    def display_title(self) -> str:
+        """成果的正式標題。期刊/會議論文以「原文」為主。
+
+        為什麼期刊/會議論文要用英文而不是中文：
+          這九篇都發表於英文期刊與國際會議（有 DOI 可查）。
+          該英文標題是這篇論文「唯一可被引用、可被檢索到」的正式名稱 ——
+          Google Scholar、Crossref、圖書館系統、其他論文的參考文獻，
+          全部使用它。中文標題是為了方便本地讀者理解而做的翻譯，
+          不是這篇論文的名字。
+
+          若把翻譯當成主標題，會有兩個實際後果：
+            1. 訪客用論文原名搜尋時找不到本站（翻譯不會命中）。
+            2. 引用本站頁面的人會抄到一個不存在的標題。
+
+          因此 is_scholarly 的成果一律以 title_en 為主標題；
+          專案、原型、模擬等本來就以中文命名的成果維持中文優先。
+
+        為什麼要兜底 slug：
           draft 階段允許標題未填，Admin 列表仍需要可辨識的字串。
           前台不會遇到此情況，因為 publish validator 會擋下無標題成果。
         """
+        if self.is_scholarly and self.title_en:
+            return self.title_en
         return self.title_zh or self.title_en or self.slug
+
+    @property
+    def secondary_title(self) -> str | None:
+        """另一語言的標題，供主標題下方並列顯示。
+
+        對期刊/會議論文而言這是中文翻譯（閱讀輔助）；
+        對中文命名的成果而言則是英文名。
+        與主標題相同或不存在時回傳 None，呼叫端據此不輸出空節點。
+
+        用途：確保「至少中英並列」—— 不論主標題是哪一種語言，
+        另一種語言只要有值就一定看得到，不會只剩翻譯或只剩原文。
+        """
+        primary = self.display_title
+        other = self.title_zh if primary == self.title_en else self.title_en
+        if not other or other == primary:
+            return None
+        return other
+
+    @property
+    def display_title_lang(self) -> str:
+        """主標題的語言代碼，供 template 輸出 lang 屬性。
+
+        頁面整體是 zh-Hant-TW，但論文主標題是英文原文。
+        不標記語言的話，中文語音合成會逐字硬唸英文標題
+        （WCAG 3.1.2 Language of Parts）。
+        """
+        return "en" if self.display_title == self.title_en else "zh-Hant-TW"
+
+    @property
+    def secondary_title_lang(self) -> str:
+        """並列標題的語言代碼（理由同 display_title_lang）。"""
+        return "en" if self.secondary_title == self.title_en else "zh-Hant-TW"
 
     @property
     def lab_people(self) -> list["Person"]:

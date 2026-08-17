@@ -328,6 +328,60 @@ def test_sqlite_foreign_keys_enforced(app):
         assert value == 1, "SQLite 的 foreign_keys PRAGMA 必須為開啟"
 
 
+# ----------------------------------------------------------------------
+# 作者結構化資料（交付前審查 REV-106）
+# ----------------------------------------------------------------------
+# 沒有 Lab 人物關聯時，成果會退回使用 authors_display_text。
+# 那是一整串作者列，若直接輸出成單一 Person.name，等於宣告一個
+# 姓名叫 "C.-L. Yang, A. B. Chen, D. Lin" 的人 —— 與頁面意思不符，
+# 違反 [S7]「structured data 必須正確代表頁面主內容」。
+
+
+def test_author_display_text_is_split_into_separate_persons(app):
+    """純文字作者列必須拆成多個 Person，而不是一個超長姓名。"""
+    from app.services.research_service import ResearchService
+    from app.services.schema_service import SchemaService
+
+    # test_request_context：SchemaService 會用 url_for 產生 canonical，
+    # 需要 request context 才能 build URL。
+    with app.test_request_context():
+        output = ResearchService.create({
+            "title_zh": "作者拆分測試",
+            "slug": "author-split-test",
+            "output_type": "journal",
+            "year": 2026,
+            "summary_zh": "測試用摘要。",
+            "authors_display_text": "C.-L. Yang, A. B. Chen, D. Lin",
+        })
+        data = SchemaService.research_output(output)
+
+    authors = data["author"]
+    assert isinstance(authors, list), "多位作者必須輸出為陣列"
+    assert [a["name"] for a in authors] == ["C.-L. Yang", "A. B. Chen", "D. Lin"]
+    assert all(a["@type"] == "Person" for a in authors)
+
+
+def test_single_author_display_text_stays_single_person(app):
+    """只有一位作者時行為與拆分前一致（不得變成單元素陣列）。"""
+    from app.services.research_service import ResearchService
+    from app.services.schema_service import SchemaService
+
+    # test_request_context：SchemaService 會用 url_for 產生 canonical，
+    # 需要 request context 才能 build URL。
+    with app.test_request_context():
+        output = ResearchService.create({
+            "title_zh": "單一作者測試",
+            "slug": "author-single-test",
+            "output_type": "journal",
+            "year": 2026,
+            "summary_zh": "測試用摘要。",
+            "authors_display_text": "C.-L. Yang",
+        })
+        data = SchemaService.research_output(output)
+
+    assert data["author"] == {"@type": "Person", "name": "C.-L. Yang"}
+
+
 def test_orphan_foreign_key_is_rejected(app, sample_output):
     """指向不存在人物的關聯必須被 DB 拒絕。"""
     from sqlalchemy.exc import IntegrityError

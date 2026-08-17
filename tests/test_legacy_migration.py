@@ -253,6 +253,9 @@ def test_ac23_all_four_students_are_published_and_findable(seeded_app):
 def test_ac23_students_marked_as_pending_detail(seeded_app):
     """四位學生必須標記為待補（ADR-012 的核准條件）。
 
+    ADR-012 全文：docs/adr/ADR-012-legacy-pending-publish-exemption.md
+    （SAI 的 ADR 表僅到 ADR-011；本專案新增決策一律放 docs/adr/）。
+
     這個標記是「發布但缺研究焦點」得以被允許的唯一依據，
     若被移除，這四筆資料就變成違反 §15.1 的一般內容。
     """

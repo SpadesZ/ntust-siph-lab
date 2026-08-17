@@ -456,6 +456,62 @@ main {
   font-weight: var(--weight-semibold);
 }
 
+/* 語言切換（DOM 結構與位置理由見 base.html）。
+
+   桌機：brand 靠左，導覽與語言切換一起靠右，
+   由 .site-nav 的 margin-left:auto 推過去。 */
+.site-nav {
+  margin-left: auto;
+}
+
+/* 分段控制的外框。
+
+   邊框色 #6d87a6 對 --color-navy 為 4.3:1。WCAG 1.4.11 要求
+   UI 元件邊界至少 3:1；--color-navy-soft(#1b3557) 只有 1.9:1，
+   在深底上幾乎看不見，因此這裡不沿用它。 */
+.lang-switch {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid #6d87a6;
+  border-radius: var(--radius-pill);
+}
+
+/* 兩格各自帶圓角，外框不使用 overflow:hidden ——
+   overflow:hidden 會把 --focus-ring 的外描邊裁掉，
+   鍵盤使用者就看不到焦點落在哪一格（SAI §17）。 */
+.lang-switch__item {
+  display: block;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-snug);
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+/* 可切換的那一格。#d7e4ef 對 navy 12.2:1，與導覽連結同色階。 */
+a.lang-switch__item {
+  color: #d7e4ef;
+}
+
+a.lang-switch__item:hover {
+  background: var(--color-navy-soft);
+  color: var(--color-surface);
+}
+
+/* 目前語言。填色 + aria-current 兩種管道傳達同一件事，
+   不單靠顏色（SAI §6.3）。navy 字對 photon-bright 底 8.8:1。 */
+.lang-switch__item--current {
+  background: var(--color-photon-bright);
+  color: var(--color-navy);
+  font-weight: var(--weight-semibold);
+  cursor: default;
+}
+
 .site-footer {
   background: var(--color-navy);
   color: #c3d4e2;
@@ -1386,17 +1442,37 @@ main {
     max-width: none;
   }
 
-  /* 行動版導覽：header 改為上下堆疊，導覽自然換行成兩列。
-     不使用漢堡選單（理由見 base.html 的設計決策說明）。 */
+  /* 行動版導覽：header 改為上下兩列，導覽自然換行。
+     不使用漢堡選單（理由見 base.html 的設計決策說明）。
+
+     用 flex-wrap + order 而不是 flex-direction:column ——
+     要的版面是「第一列 校徽…語言切換、第二列 導覽」，
+     column 只能給出三列堆疊，語言切換會孤零零掉在最下面，
+     離它作用的對象（整個頁面）最遠。
+     DOM 順序仍是 brand → nav → lang，順序改變只發生在視覺層，
+     而這三者互不指涉，因此不造成 Tab 順序與閱讀順序脫節。 */
   .site-header__inner {
-    flex-direction: column;
-    align-items: flex-start;
+    flex-wrap: wrap;
+    align-items: center;
     gap: var(--space-3);
     padding-block: var(--space-4);
   }
 
+  /* order:1 -> 排在 brand 之後、nav 之前。
+     margin-left:auto 在兩種情況下都做對的事：
+       放得下時（≥360px 左右）貼在 brand 同一列的最右邊；
+       放不下換行時，獨佔一列並靠右 —— 靠右才不會跟左對齊的
+       導覽連結看起來像同一群東西。 */
+  .lang-switch {
+    order: 1;
+    margin-left: auto;
+  }
+
   .site-nav {
+    order: 2;
+    flex: 1 0 100%;
     width: 100%;
+    margin-left: 0;
   }
 
   .site-nav__list {
@@ -1477,4 +1553,18 @@ main {
     font-size: 9pt;
     color: #444;
   }
+}
+
+/* 個人頁研究焦點的英文版。與中文版同段落，字級略小、色階降一階，
+   讓它明顯是同一則資訊的翻譯而不是新資訊（審查 REV-2 去重後新增）。 */
+.person-hero__focus-en {
+  margin-top: var(--space-2);
+  color: var(--color-ink-soft);
+  font-size: var(--text-sm);
+}
+
+/* 「查看全部 N 筆成果 →」。用於相關成果超過列出上限時。 */
+.section-more {
+  margin-top: var(--space-5);
+  font-size: var(--text-sm);
 }
