@@ -168,27 +168,35 @@ PUBLIC_BASE_URL=https://ntust-siph-lab-105924420674.asia-east1.run.app
 
 ---
 
-## 4. Git 分支現況 ⚠️
+## 4. Git 分支現況
+
+**兩個功能分支已於 2026-08-17 全部合併進 `main`**（以 `--no-ff` 保留分支歷史）：
 
 ```
-origin/main  ec995f1
-  ├── feat/bilingual-toggle    c146cd8  (4 個 i18n commit)
-  └── feat/cloudrun-deployment          (部署與文件)
+main  69fba38
+ ├── Merge: 中英雙語切換（feat/bilingual-toggle）           4 個 commit
+ └── Merge: Cloud Run 部署與文件（feat/cloudrun-deployment）  7 個 commit
 ```
 
 | 分支 | 內容 | 狀態 |
 | --- | --- | --- |
-| `feat/cloudrun-deployment` | 部署、ADR、交接文件 | ✅ 已推送，**尚未合併** |
-| `feat/bilingual-toggle` | 中英切換功能 | ✅ 已推送，**尚未合併** |
+| `main` | 兩者的聯集 | ✅ 已推送 |
+| `feat/bilingual-toggle` | 中英切換功能 | ✅ 已併入 main（可刪除） |
+| `feat/cloudrun-deployment` | 部署、ADR、交接文件 | ✅ 已併入 main（可刪除） |
 
-**兩個分支零檔案重疊**，可獨立審查與合併（已逐檔驗證）。
-分離時用過的 `backup/bilingual-toggle-before-split` 已在確認
-所有內容都存在於遠端後刪除。
+兩個分支**零檔案重疊**（已逐檔驗證），合併無衝突。
 
-> **目前線上跑的程式碼 = `c146cd8`（i18n）+ 3 個部署 commit**，
-> 也就是兩個分支的聯集。映像 tag `c146cd8-health-alias` 反映這件事。
-> 若只合併其中一個分支就重新建置，線上行為會改變 —— 重新部署前請先確認
-> 你要的是哪個組合。
+> **合併正確性的驗證方式**：合併後 `pytest` 為 **818 passed**，
+> 正是 i18n 分支的 815 加上部署分支新增的 3 個 health 測試。
+> 數字相符即證明合併結果是正確的聯集，沒有任何一邊被覆蓋。
+
+分離時用過的 `backup/bilingual-toggle-before-split` 已在確認所有內容
+都存在於遠端後刪除。
+
+> **`main` 現在等於線上跑的程式碼。**
+> 線上 revision `ntust-siph-lab-00002-dab` 的映像 `c146cd8-health-alias`
+> 建置於這兩個分支的聯集，與合併後的 `main` 內容一致。
+> 因此從 `main` 重新建置不會改變線上行為。
 
 ---
 
@@ -319,9 +327,13 @@ $env:TEST_POSTGRES_URL = $URL -replace '/neondb\?', '/siph_test?'
 `scripts/export_sqlite.py` 的產出包含 `tables/admin_users.json`（密碼雜湊）
 與 `audit_logs.json`。
 
-⚠️ **這個目錄只有在 `feat/cloudrun-deployment` 分支上才被 `.gitignore` 排除。**
-在 `main` 或 `feat/bilingual-toggle` 上執行匯出，**有可能誤 commit 進版控**。
-合併部署分支後此風險才會消失。
+✅ **此風險已於 2026-08-17 隨部署分支合併進 `main` 而解除** ——
+`.gitignore` 的排除規則現在存在於 `main`，任何從 `main` 開出的分支
+都會繼承。
+
+> 歷史紀錄：這條規則原本只在 `feat/cloudrun-deployment` 上，
+> 在 `main` 執行匯出仍有誤 commit 管理員密碼雜湊的風險。
+> 若日後有人從合併前的舊 commit 開分支，請確認該規則存在。
 
 ### 7.6 smoke test 有兩種「預期中的失敗」
 
@@ -364,9 +376,8 @@ Flask-WTF 對 HTTPS 的 POST 會做 strict referer 檢查。
 | --- | --- |
 | 輪替資料庫密碼 | Neon 連線字串曾顯示於協作對話中，建議重設 |
 | 輪替管理員密碼 | 2026-08-17 重設後的密碼曾顯示於對話中，建議管理者登入後自行更改 |
-| 合併 `feat/cloudrun-deployment` | 合併後 §7.5 的風險才消失 |
-| 合併 `feat/bilingual-toggle` | 兩個分支零重疊，可獨立合併 |
 | 修正 §7.3 的連線字串正規化 | 讓遷移腳本接受標準 `postgresql://` |
+| 刪除已合併的功能分支（選用） | 兩個分支都已完全併入 `main`，可安全刪除 |
 | 簽核後開放索引 | `ROBOTS_POLICY=public`（指令見 §6） |
 | 關閉舊 Google Sites | **等簽核完成**，依 `deploy/migration-runbook.md` |
 | 自訂網域 | 校方 DNS 就緒後設定，並同步改 `PUBLIC_BASE_URL` |
