@@ -172,17 +172,18 @@ PUBLIC_BASE_URL=https://ntust-siph-lab-105924420674.asia-east1.run.app
 
 ```
 origin/main  ec995f1
-  ├── feat/bilingual-toggle    c146cd8  (本地，4 個 i18n commit，未推送)
-  └── feat/cloudrun-deployment c8ec32e  (已推送，3 個部署 commit)
+  ├── feat/bilingual-toggle    c146cd8  (4 個 i18n commit)
+  └── feat/cloudrun-deployment          (部署與文件)
 ```
 
 | 分支 | 內容 | 狀態 |
 | --- | --- | --- |
-| `feat/cloudrun-deployment` | 部署相關（本次） | ✅ 已推送，**尚未合併** |
-| `feat/bilingual-toggle` | 中英切換功能 | ⚠️ 僅存在本地，**尚未推送** |
-| `backup/bilingual-toggle-before-split` | 分離前的備份 | 可在確認無誤後刪除 |
+| `feat/cloudrun-deployment` | 部署、ADR、交接文件 | ✅ 已推送，**尚未合併** |
+| `feat/bilingual-toggle` | 中英切換功能 | ✅ 已推送，**尚未合併** |
 
-**兩個分支零檔案重疊**，可獨立審查與合併。
+**兩個分支零檔案重疊**，可獨立審查與合併（已逐檔驗證）。
+分離時用過的 `backup/bilingual-toggle-before-split` 已在確認
+所有內容都存在於遠端後刪除。
 
 > **目前線上跑的程式碼 = `c146cd8`（i18n）+ 3 個部署 commit**，
 > 也就是兩個分支的聯集。映像 tag `c146cd8-health-alias` 反映這件事。
@@ -364,17 +365,22 @@ Flask-WTF 對 HTTPS 的 POST 會做 strict referer 檢查。
 | 輪替資料庫密碼 | Neon 連線字串曾顯示於協作對話中，建議重設 |
 | 輪替管理員密碼 | 2026-08-17 重設後的密碼曾顯示於對話中，建議管理者登入後自行更改 |
 | 合併 `feat/cloudrun-deployment` | 合併後 §7.5 的風險才消失 |
-| 推送 `feat/bilingual-toggle` | 目前只在本地，**有遺失風險** |
+| 合併 `feat/bilingual-toggle` | 兩個分支零重疊，可獨立合併 |
 | 修正 §7.3 的連線字串正規化 | 讓遷移腳本接受標準 `postgresql://` |
 | 簽核後開放索引 | `ROBOTS_POLICY=public`（指令見 §6） |
 | 關閉舊 Google Sites | **等簽核完成**，依 `deploy/migration-runbook.md` |
 | 自訂網域 | 校方 DNS 就緒後設定，並同步改 `PUBLIC_BASE_URL` |
-| 刪除備份分支 | 確認無誤後 `git branch -D backup/bilingual-toggle-before-split` |
 
-### 8.3 與本站無關的檔案
+### 8.3 商務文件（刻意不在版控中）
 
-工作區有一個未追蹤檔案 `scripts/generate_valuation_pdf.py`（2026-08-17 12:03 建立），
-**不是本次部署產生的**，用途不明，未納入任何 commit。接手時請向委託人確認去留。
+`scripts/generate_valuation_pdf.py` 產生的是「系統價值評估與請款對應報告」，
+檔案本身標示「機密與內部參考文件」，產出的 PDF 位於 repo 之外的上層資料夾。
+
+它雖然主題是本專案，但屬於商務範疇而非網站系統。這個 repo 未來可能交付校方，
+報價與請款金額不應出現在其中，因此已加入 `.gitignore`
+（連同 `*價值評估*.pdf`、`*請款*.pdf`）。
+
+**該檔案仍留在本機工作區**，只是不會進版控。要不要移到 repo 之外由委託人決定。
 
 ---
 
@@ -386,15 +392,15 @@ Flask-WTF 對 HTTPS 的 POST 會做 strict referer 檢查。
 | `docs/adr/ADR-012` | 母站遷入人物的發布豁免 |
 | **`docs/adr/ADR-013`** | **以 Neon 取代 Cloud SQL（本次）** |
 | **`docs/adr/ADR-014`** | **`/healthz` 保留路徑與 `/health` 別名（本次）** |
-| `deploy/cloudrun.md` | 部署步驟（§1.2 仍描述 Cloud SQL，已被 ADR-013 取代） |
-| `deploy/migration-runbook.md` | cutover 與 rollback 程序 |
-| `deploy/service.yaml` | 宣告式設定（**仍含 Cloud SQL 註解，未套用於本次部署**） |
+| `deploy/cloudrun.md` | 部署步驟（**已改寫為 Neon 免費架構**，含 §11 成本章節） |
+| `deploy/migration-runbook.md` | cutover 與 rollback 程序（已移除 Cloud SQL Proxy） |
+| `deploy/service.yaml` | 宣告式設定（**已改寫**，3 個 secret、無 cloudsql 註解） |
 | `docs/acceptance-checklist.md` | AC-01～AC-26 驗收清單 |
 | `legacy/google_sites/` | 母站零遺漏遷移的稽核證據鏈（ADR-011） |
 
-> ⚠️ `deploy/cloudrun.md` §1.2／§6 與 `deploy/service.yaml` 仍描述 Cloud SQL 的做法。
-> **實際部署未使用 Cloud SQL**（ADR-013）。這兩份文件尚未全面改寫，
-> 閱讀時請以 ADR-013 與本文件 §5 為準。
+> `deploy/` 底下三份文件已於 2026-08-17 全面對齊實際部署。
+> 文件中仍出現「Cloud SQL」字樣之處，都是在說明**為什麼不用它**，
+> 不是操作指示。
 
 ---
 
