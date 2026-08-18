@@ -191,8 +191,8 @@ NOTES.md 文末另列出 **3 則沒有對應測試**的 NOTE（002、005、007�
 1. **`docs/NOTES.md`** 新建，9 則 NOTE，雙向閉環。
 2. **3 個無檔頭檔案補齊**（十欄格式）：
    - `scripts/generate_valuation_pdf.py`（324 行，含 gitignore 理由與兩處硬編碼 Windows 路徑警告）
-   - `migrations/versions/aee291c6966c_...py`（261 行，7 張核心表）
-   - `migrations/versions/16bde59ce22f_...py`（保留原有的優良理由敘述）
+   - 初始 schema migration（`aee291c6966c`，261 行，7 張核心表）
+   - 雙語欄位 migration（`16bde59ce22f`，保留原有的優良理由敘述）
    - 已驗證兩個 migration 的 revision id 與 Alembic docstring 未受影響。
 3. **`app/models/__init__.py`** 升級為十欄樣板（拆開模組定位／主要責任、
    補功能說明、修正失效引用、登記 NOTE-009），版本 v1.0 → v1.1。
