@@ -30,7 +30,8 @@ NTUST SiPh Lab - Alumni Page (/alumni)
   2. 每頁唯一 h1（AC-18）。
 
 驗證方式：
-  pytest tests/test_people.py::test_alumni_grouped_by_year
+  pytest tests/test_people.py::test_alumni_page_groups_by_year
+  pytest tests/test_seo.py::test_ac18_single_h1_per_page
 ============================================================
 #}
 {% extends "public/base.html" %}

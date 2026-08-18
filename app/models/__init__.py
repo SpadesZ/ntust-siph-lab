@@ -10,15 +10,24 @@
 #   app/models/__init__.py
 #
 # 建立日期：2026-08-14
-# 最後重大修改：2026-08-14
-# 版本：v1.0
+# 最後重大修改：2026-08-18（改用十欄檔頭規範，作為全 repo 樣板）
+# 版本：v1.1
 #
-# 模組定位與責任邊界：
+# 功能說明：
+#   把 app/models/ 底下所有 model 模組集中 import 一次，
+#   並以 __all__ 對外提供統一的匯入名稱。本身不做任何事，
+#   效果全在 import 的副作用：讓 SQLAlchemy 的 metadata 收齊所有資料表。
+#
+# 模組定位：
 #   單純的匯總層。存在的唯一理由是「保證所有 model 都被 import」——
 #   Alembic autogenerate 只看得到已載入的 model，若某張表沒被
 #   import，migration 會靜默漏掉它，直到 production 查詢失敗才發現。
+#   **不是** model 定義的地方，也不是查詢或商業邏輯的地方。
 #
-#   責任邊界：不得在此定義任何 model、邏輯或查詢。
+# 主要責任：
+#   1. 依相依順序 import 各 model 模組（見下方「特殊機制」）。
+#   2. 以 __all__ 宣告對外匯出名稱，並標註 noqa: F401。
+#   3. 維持 db.metadata 完整，供 migrations/env.py autogenerate 使用。
 #
 # 輸入 -> 處理 -> 輸出 Pipeline：
 #   輸入：無（import side effect）
@@ -40,7 +49,7 @@
 #   無。任何 import 錯誤都應該讓 app 啟動失敗（fail-fast），
 #   因為 model 載入不完整會造成難以診斷的 schema 漂移。
 #
-# 特殊機制：
+# 特殊機制 —— NOTE(NOTE-009)：
 #   import 順序刻意為 admin_user -> person -> research_output，
 #   因為 person 與 research_output 互相參照，且兩者的檔案末端
 #   都有補完 import。先載入 person 可確保 relationship 字串
@@ -56,7 +65,8 @@
 #   否則 flask db migrate 不會產生該表的 migration。
 #
 # 驗證方式：
-#   pytest tests/test_schema.py::test_all_tables_present
+#   pytest tests/test_schema.py::test_all_core_tables_present
+#   pytest tests/test_schema.py::test_models_are_all_registered_in_metadata
 #   flask db migrate --autogenerate（應產生空 diff）
 # ============================================================
 

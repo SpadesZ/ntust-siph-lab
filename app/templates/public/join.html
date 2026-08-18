@@ -29,7 +29,8 @@ NTUST SiPh Lab - Join / Contact Page (/join)
   3. 招募文案全部來自 SiteSetting，不得硬編碼。
 
 驗證方式：
-  pytest tests/test_seo.py::test_join_page_renders
+  pytest tests/test_seo.py::test_every_public_page_has_complete_metadata  （PUBLIC_PAGES 含 /join）
+  pytest tests/test_admin.py::test_settings_update_reflects_on_public_site
 ============================================================
 #}
 {% extends "public/base.html" %}

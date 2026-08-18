@@ -1,3 +1,39 @@
+# ============================================================
+# NTUST SiPh Lab - Migration：about_intro_en 欄位
+#
+# 上下游：
+#   flask db upgrade -> migrations/env.py -> 本檔 upgrade()
+#       -> site_settings 增加 about_intro_en 欄
+#       -> about.html 的 localized(settings, 'about_intro') 取得英文值
+#       -> /about 英文版 meta description 不再回退到站台預設
+#   前一版：aee291c6966c（initial schema）
+#
+# 檔案路徑：
+#   migrations/versions/16bde59ce22f_add_about_intro_en_for_bilingual_about_.py
+#
+# 建立日期：2026-08-16 / 版本：v1.0
+#
+# 功能說明：
+#   在 site_settings 表補上 about_intro_en 這個可為空的文字欄位，
+#   讓 /about 頁的英文敘述有獨立來源。純結構變更，不動既有資料。
+#
+# 模組定位：
+#   單欄位 Alembic migration。只補欄位，不改模板、不填內容——
+#   內容由管理者於 /admin 自行填寫。
+#
+# 主要責任：
+#   1. upgrade()：以 batch_alter_table 新增 about_intro_en（Text, nullable）。
+#   2. downgrade()：移除該欄位。
+#
+# 維護契約：
+#   - about_methods_zh 同樣缺英文版，但它不參與 description 的組成，
+#     因此不在本次範圍；要補時比照本檔即可。
+#   - 已套用於正式環境，不得修改；後續調整一律新增 migration。
+#
+# 驗證方式：
+#   pytest tests/test_i18n.py tests/test_seo.py
+#   pytest tests/test_settings.py
+# ============================================================
 """add about_intro_en for bilingual about page description
 
 Revision ID: 16bde59ce22f

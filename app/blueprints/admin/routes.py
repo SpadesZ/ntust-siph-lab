@@ -69,7 +69,7 @@
 #   為什麼：避免使用者按重新整理時重複送出表單，
 #   造成重複建立內容或重複觸發狀態轉換。
 #
-# 特殊機制（全域 login_required）：
+# 特殊機制（全域 login_required）—— NOTE(NOTE-004)：
 #   使用 before_request 對整個 blueprint 套用，而非逐個 route
 #   加裝飾器。為什麼：漏加裝飾器是最常見的權限漏洞，
 #   而「預設全部要登入」讓遺漏不可能發生（AC-01）。
@@ -250,7 +250,7 @@ def person_new():
             flash(str(exc), "error")
             return render_template("admin/person_form.html", form=form, person=None)
 
-        # 到這裡人物已經建立並 commit。照片是獨立的後續步驟，
+        # NOTE(NOTE-003)：到這裡人物已經建立並 commit。照片是獨立的後續步驟，
         # 其失敗「不得」把使用者送回新增表單 —— 那會讓管理員以為
         # 整筆都失敗而重新送出，結果建立第二筆人物
         # （slug 會被自動去重成 -2，產生難以察覺的重複實體）。
