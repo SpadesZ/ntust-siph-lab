@@ -231,7 +231,7 @@ LEGACY_ITEMS: list[LegacyItem] = [
         target_entity="SiteSetting",
         target_url_or_field="site_settings.lab_name_zh / lab_name_en（Header、首頁、metadata）",
         status=STATUS_MIGRATED,
-        verification="exact text match（tests/test_legacy_migration.py::test_lab_name_migrated）",
+        verification="exact text match（tests/test_legacy_migration.py::test_ac23_lab_name_migrated）",
     ),
     LegacyItem(
         legacy_id="LC-002",

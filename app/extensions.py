@@ -77,8 +77,8 @@
 #      並跑 pytest tests/test_db_portability.py。
 #
 # 驗證方式：
-#   pytest tests/test_db_portability.py::test_sqlite_foreign_keys_enforced
-#   pytest tests/test_auth.py
+#   pytest tests/test_schema.py::test_sqlite_foreign_keys_enforced
+#   pytest tests/test_db_portability.py tests/test_auth.py
 # ============================================================
 
 from __future__ import annotations

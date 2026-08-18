@@ -67,7 +67,7 @@
 #
 # 維護契約：
 #   放寬 normalize_url 的 scheme allowlist 前必須先評估 XSS 影響，
-#   並更新 tests/test_validators.py::test_dangerous_scheme_rejected。
+#   並更新 tests/test_validators.py::test_is_valid_url_rejects_dangerous_or_malformed。
 #
 # 驗證方式：
 #   pytest tests/test_validators.py

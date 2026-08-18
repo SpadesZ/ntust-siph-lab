@@ -33,7 +33,9 @@ Legacy 對照（SAI §22.3 Old -> New Mapping）：
   2. 每頁唯一 h1（AC-18）。
 
 驗證方式：
-  pytest tests/test_legacy_migration.py::test_professor_fields_visible
+  pytest tests/test_legacy_migration.py::test_ac23_professor_is_visible_on_public_site
+  pytest tests/test_legacy_migration.py::test_ac23_professor_fields_are_migrated_verbatim
+  pytest tests/test_people.py::test_faculty_appears_on_about_page
 ============================================================
 #}
 {% extends "public/base.html" %}

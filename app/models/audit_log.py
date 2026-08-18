@@ -49,10 +49,10 @@
 #   確保刪除帳號不會連帶刪除稽核紀錄（稽核紀錄必須比帳號更長壽）。
 #
 # Error Handling / Fallback：
-#   write() 不會因為 summary 過長而失敗，改為截斷並附省略號。
+#   NOTE(NOTE-008)：write() 不會因為 summary 過長而失敗，改為截斷並附省略號。
 #   理由：稽核寫入失敗絕不應該讓使用者的正常操作失敗。
 #
-# 特殊機制（隱私）：
+# 特殊機制（隱私）—— NOTE(NOTE-007)：
 #   SAI §8.8 指出「依隱私政策決定是否保存完整 IP；v1 可只留必要
 #   資訊」。本實作分兩種模式：
 #     - 未提供 AUDIT_IP_SALT（預設）：完全不記錄 IP，欄位存 null
@@ -74,7 +74,8 @@
 #   「內容更新成功但稽核失敗」的 transaction rollback。
 #
 # 驗證方式：
-#   pytest tests/test_auth.py::test_login_writes_audit_log
+#   pytest tests/test_auth.py::test_successful_login_writes_audit_log
+#   pytest tests/test_auth.py::test_ac02_failed_login_writes_audit_log
 #   pytest tests/test_people.py::test_graduate_writes_audit_log
 # ============================================================
 

@@ -67,7 +67,7 @@
 #   W3C Datetime 格式，否則 Search Console 會回報 sitemap 錯誤。
 #
 # 驗證方式：
-#   pytest tests/test_seo.py::test_sitemap_lastmod_format
+#   pytest tests/test_seo.py::test_sitemap_lastmod_is_valid_w3c_datetime
 # ============================================================
 
 from __future__ import annotations

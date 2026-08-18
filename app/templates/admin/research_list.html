@@ -26,7 +26,9 @@ NTUST SiPh Lab - Admin Research List (/admin/research)
      避免列表上密集的 POST 按鈕造成誤觸。
 
 驗證方式：
-  pytest tests/test_admin.py::test_research_list_filters
+  pytest tests/test_admin.py::test_admin_pages_render  （參數含 /admin/research）
+  pytest tests/test_research.py::test_research_index_filters_by_type_and_year  （公開頁篩選）
+  註：admin 列表本身的篩選「沒有自動測試」，修改篩選邏輯須人工複驗。
 ============================================================
 #}
 {% extends "admin/base.html" %}

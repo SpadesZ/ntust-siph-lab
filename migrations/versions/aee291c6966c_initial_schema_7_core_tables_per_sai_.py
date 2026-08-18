@@ -1,7 +1,48 @@
+# ============================================================
+# NTUST SiPh Lab - Initial Schema Migration（7 張核心表）
+#
+# 上下游：
+#   flask db upgrade -> migrations/env.py -> 本檔 upgrade()
+#       -> 建立 7 張核心表 -> 後續 migration（16bde59ce22f）接續
+#   本檔是整條 migration 鏈的起點（down_revision = None）
+#
+# 檔案路徑：
+#   migrations/versions/aee291c6966c_initial_schema_7_core_tables_per_sai_.py
+#
+# 建立日期：2026-08-15 / 版本：v1.0
+#
+# 功能說明：
+#   從空資料庫建立整個網站的資料結構。執行後會產生 7 張表：
+#   admin_users（管理員帳號）、people（人物）、research_outputs（研究成果）、
+#   research_output_people（成果與作者的多對多關聯）、
+#   site_settings（站台設定）、redirects（舊網址轉址）、audit_logs（稽核紀錄）。
+#   對應 SAI §8 的資料模型定義。
+#
+# 模組定位：
+#   Alembic migration，schema 的唯一真相來源之一（另一個是 app/models/）。
+#   只描述「結構怎麼變」，不含任何業務邏輯，也不塞入任何種子資料——
+#   種子資料屬於 scripts/seed_*.py 的職責。
+#
+# 主要責任：
+#   1. upgrade()：依相依順序建表並建立索引與外鍵約束。
+#   2. downgrade()：以相反順序還原，確保可回滾。
+#
+# 維護契約：
+#   - 本檔已經套用於正式環境，**不得再修改**。schema 要調整一律新增 migration。
+#   - 使用 batch_alter_table 是為了 SQLite 相容（ADR-002 local-first、
+#     ADR-003 不得依賴 SQLite-only 技巧）；新增 migration 時必須比照，
+#     否則 PostgreSQL 與 SQLite 兩邊會產生行為差異。
+#   - 新增資料表後必須同步在 app/models/__init__.py 匯入，
+#     否則 Alembic autogenerate 看不到它。
+#
+# 驗證方式：
+#   pytest tests/test_schema.py tests/test_db_portability.py
+#   pytest tests/test_migration_roundtrip.py
+# ============================================================
 """initial schema: 7 core tables per SAI section 8
 
 Revision ID: aee291c6966c
-Revises: 
+Revises:
 Create Date: 2026-08-15 12:37:02.669409
 
 """

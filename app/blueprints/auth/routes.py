@@ -50,7 +50,7 @@
 #   admin_users（讀 + 更新 last_login_at）、audit_logs（寫入）。
 #
 # Error Handling / Fallback：
-#   - 帳號不存在與密碼錯誤回傳「完全相同」的訊息與狀態碼。
+#   - NOTE(NOTE-002)：帳號不存在與密碼錯誤回傳「完全相同」的訊息與狀態碼。
 #     為什麼：區分兩者等於提供帳號列舉（user enumeration）管道，
 #     讓攻擊者可先確認帳號存在再集中猜密碼。
 #   - rate limit 觸發時由全域 429 handler 處理（SAI §11.2 驗收）。
@@ -141,7 +141,7 @@ def _is_safe_next(target: str | None) -> bool:
       - 不得包含反斜線（見下方說明）。
       - 不得包含 scheme 或 netloc。
 
-    為什麼要另外擋反斜線（交付前審查 REV-108）：
+    NOTE(NOTE-001)：為什麼要另外擋反斜線（交付前審查 REV-108）：
       依 WHATWG URL 規範，在 http/https 這類 "special scheme" 下，
       URL 解析器會把 "\" 視同 "/"。因此 "/\evil.example" 在瀏覽器
       眼中等於 "//evil.example" —— 一個 protocol-relative URL，

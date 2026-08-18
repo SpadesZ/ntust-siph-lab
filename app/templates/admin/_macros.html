@@ -38,7 +38,8 @@ NTUST SiPh Lab - Admin Form Macros
   2. 禁止移除 aria-describedby 的關聯邏輯。
 
 驗證方式：
-  pytest tests/test_admin.py::test_form_fields_have_labels
+  pytest tests/test_a11y.py::test_ac16_admin_forms_have_associated_labels
+  pytest tests/test_a11y.py::test_ac16_required_fields_are_marked
   人工：螢幕閱讀器或瀏覽器 accessibility inspector
 ============================================================
 #}

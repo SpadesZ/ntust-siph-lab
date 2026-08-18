@@ -67,7 +67,8 @@
 #   這是不可逆的 SEO 損失。
 #
 # 驗證方式：
-#   pytest tests/test_research.py::test_slug_change_creates_redirect
+#   pytest tests/test_research.py::test_ac10_slug_change_creates_redirect
+#   pytest tests/test_people.py::test_slug_change_on_published_person_creates_redirect
 #   pytest tests/test_seo.py
 # ============================================================
 
