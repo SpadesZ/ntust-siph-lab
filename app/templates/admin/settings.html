@@ -22,6 +22,11 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
 多值欄位（研究主題 / 可驗證事實 / 外部連結）：
   以固定數量的空白列呈現（既有資料 + 3 列空白），
   由 SiteSettingForm.parse_repeated() 依索引解析。
+
+  渲染來源一律是 route 傳入的 repeats.*，不可直接讀 setting.*：
+  POST 驗證失敗時必須顯示「使用者剛送出的值」，
+  否則剛編輯好的列會悄悄還原成資料庫舊值而沒有任何提示
+  （見 routes.py::_repeat_context）。
   留空的列會被 SettingsService 的 _clean_* 過濾掉。
 
   為什麼用固定空白列而非 JS 動態新增：
@@ -139,7 +144,10 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
     </p>
 
     <div class="repeat-group">
-      {% set focus_items = setting.research_focus + [{}, {}, {}] %}
+      {# repeats.* 由 route 提供：POST 後是使用者剛送出的值，
+         GET 時才是資料庫既有值。直接讀 setting.* 會在驗證失敗時
+         把使用者剛填的內容悄悄還原（見 routes.py::_repeat_context）。 #}
+      {% set focus_items = repeats.research_focus + [{}, {}, {}] %}
       {% for item in focus_items %}
       <div class="repeat-row">
         <div class="form-field">
@@ -173,7 +181,7 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
     </p>
 
     <div class="repeat-group">
-      {% set proof_items = setting.lab_proof + [{}, {}, {}] %}
+      {% set proof_items = repeats.lab_proof + [{}, {}, {}] %}
       {% for item in proof_items %}
       <div class="repeat-row">
         <div class="form-field">
@@ -252,7 +260,7 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
     </div>
 
     <div class="repeat-group" style="margin-top: var(--space-5);">
-      {% set link_items = setting.social_links + [{}, {}] %}
+      {% set link_items = repeats.social_links + [{}, {}] %}
       {% for item in link_items %}
       <div class="repeat-row">
         <div class="form-field">
