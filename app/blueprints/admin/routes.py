@@ -159,6 +159,44 @@ def _actor() -> tuple[int | None, str | None]:
     )
 
 
+def _needs_confirmation() -> bool:
+    """這次 POST 是否還沒經過確認頁。
+
+    破壞性操作採兩段式：
+      第一次 POST            -> 顯示確認頁（列出影響範圍）
+      帶 confirmed=1 再 POST -> 真正執行
+
+    為什麼要有：封存、移除照片這些操作原本單擊即生效，
+    而系統不提供永久刪除也沒有 Undo，封存後的項目在列表
+    預設不顯示，新手管理員會以為資料整個不見了（SAI §7.6）。
+    """
+    return request.form.get("confirmed") != "1"
+
+
+def _confirmation_page(
+    *,
+    title: str,
+    action: str,
+    cancel_url: str,
+    confirm_label: str,
+    impact: list[str] | None = None,
+    reversible: str | None = None,
+    extra_fields: dict | None = None,
+):
+    """渲染破壞性操作的確認頁（見 _confirm_action.html）。"""
+    return render_template(
+        "admin/_confirm_action.html",
+        title=title,
+        action=action,
+        cancel_url=cancel_url,
+        confirm_label=confirm_label,
+        impact=impact or [],
+        reversible=reversible,
+        extra_fields=extra_fields or {},
+        form=ConfirmForm(),
+    )
+
+
 # ----------------------------------------------------------------------
 # Dashboard
 # ----------------------------------------------------------------------
@@ -370,6 +408,27 @@ def person_archive(person_id: int):
     if not ConfirmForm().validate_on_submit():
         abort(400)
 
+    if _needs_confirmation():
+        impact = []
+        if person.publish_status == PublishStatus.PUBLISHED:
+            impact.append(f"前台的 /people/{person.slug} 將不再開放瀏覽。")
+        linked = [link for link in person.output_links if link.research_output]
+        if linked:
+            impact.append(
+                f"{len(linked)} 筆研究成果的作者列將不再顯示「{person.name_zh}」。"
+            )
+        return _confirmation_page(
+            title=f"確定要封存「{person.name_zh}」嗎？",
+            action=url_for("admin.person_archive", person_id=person.id),
+            cancel_url=url_for("admin.person_edit", person_id=person.id),
+            confirm_label="確認封存",
+            impact=impact,
+            reversible=(
+                "資料會完整保留，可於「研究成員」以發布狀態篩選"
+                "「已封存」找回並重新發布。系統不提供永久刪除。"
+            ),
+        )
+
     admin_id, ip = _actor()
     PersonService.archive(person, admin_user_id=admin_id, ip_address=ip)
     flash(f"已封存「{person.name_zh}」。資料仍保留，可隨時重新發布。", "success")
@@ -421,6 +480,16 @@ def person_photo_delete(person_id: int):
         abort(404)
     if not ConfirmForm().validate_on_submit():
         abort(400)
+
+    if _needs_confirmation():
+        return _confirmation_page(
+            title=f"確定要移除「{person.name_zh}」的照片嗎？",
+            action=url_for("admin.person_photo_delete", person_id=person.id),
+            cancel_url=url_for("admin.person_edit", person_id=person.id),
+            confirm_label="確認移除照片",
+            impact=["照片檔案會從儲存空間刪除，無法復原。"],
+            reversible="其他欄位不受影響。若需要照片，重新上傳一張即可。",
+        )
 
     admin_id, ip = _actor()
     PersonService.remove_photo(person, admin_user_id=admin_id, ip_address=ip)
@@ -637,6 +706,24 @@ def research_archive(output_id: int):
     if not ConfirmForm().validate_on_submit():
         abort(400)
 
+    if _needs_confirmation():
+        impact = []
+        if output.publish_status == PublishStatus.PUBLISHED:
+            impact.append(f"前台的 /research/{output.slug} 將不再開放瀏覽。")
+        if output.is_featured:
+            impact.append("這筆成果目前在首頁精選，封存後會從首頁移除。")
+        return _confirmation_page(
+            title=f"確定要封存「{output.display_title}」嗎？",
+            action=url_for("admin.research_archive", output_id=output.id),
+            cancel_url=url_for("admin.research_edit", output_id=output.id),
+            confirm_label="確認封存",
+            impact=impact,
+            reversible=(
+                "資料會完整保留，可於「研究成果」以發布狀態篩選"
+                "「已封存」找回並重新發布。系統不提供永久刪除。"
+            ),
+        )
+
     admin_id, ip = _actor()
     ResearchService.archive(output, admin_user_id=admin_id, ip_address=ip)
     flash(f"已封存「{output.display_title}」。", "success")
@@ -671,6 +758,16 @@ def research_image_delete(output_id: int):
         abort(404)
     if not ConfirmForm().validate_on_submit():
         abort(400)
+
+    if _needs_confirmation():
+        return _confirmation_page(
+            title=f"確定要移除「{output.display_title}」的主圖嗎？",
+            action=url_for("admin.research_image_delete", output_id=output.id),
+            cancel_url=url_for("admin.research_edit", output_id=output.id),
+            confirm_label="確認移除主圖",
+            impact=["圖片檔案會從儲存空間刪除，無法復原。"],
+            reversible="其他欄位不受影響。若需要主圖，重新上傳一張即可。",
+        )
 
     admin_id, ip = _actor()
     ResearchService.remove_hero_image(output, admin_user_id=admin_id, ip_address=ip)
@@ -795,11 +892,33 @@ def settings():
     return _render_settings(form, setting, from_form=request.method == "POST")
 
 
+#: 設定頁三個媒體欄位的中文名稱（確認頁文案用）。
+_MEDIA_LABELS = {
+    "logo_path": "研究室 Logo",
+    "hero_media_path": "首頁主視覺",
+    "og_image_path": "社群分享預設圖",
+}
+
+
 @admin_bp.route("/settings/media/<field>/delete", methods=["POST"])
 def settings_media_delete(field: str):
     """移除設定中的圖片（logo / hero / OG）。"""
     if not ConfirmForm().validate_on_submit():
         abort(400)
+
+    if _needs_confirmation():
+        label = _MEDIA_LABELS.get(field, field)
+        return _confirmation_page(
+            title=f"確定要移除「{label}」嗎？",
+            action=url_for("admin.settings_media_delete", field=field),
+            cancel_url=url_for("admin.settings"),
+            confirm_label="確認移除",
+            impact=[
+                "圖片檔案會從儲存空間刪除，無法復原。",
+                "公開網站上使用這張圖的位置會改用預設樣式。",
+            ],
+            reversible="其他設定不受影響。若需要，重新上傳一張即可。",
+        )
 
     admin_id, ip = _actor()
     try:

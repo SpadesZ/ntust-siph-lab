@@ -227,6 +227,12 @@ NTUST SiPh Lab - Admin Research Form (新增/編輯)
     {% endif %}
   </p>
 
+  {# 理由同 person_form：這一區獨立於上方表單。 #}
+  <p class="form-field__hint" style="margin-bottom: var(--space-4);">
+    ⚠️ 這裡發布的是<strong>已儲存</strong>的版本。若你剛修改了上方欄位，
+    請先按「儲存變更」再發布。
+  </p>
+
   <div style="display: flex; gap: var(--space-3); flex-wrap: wrap;">
     {% if output.publish_status != 'published' %}
     {{ confirm_button(
