@@ -28,6 +28,10 @@
 #   test_error_summary_links_to_each_failing_field
 #   test_no_error_summary_when_form_is_clean
 #   test_builtin_validation_messages_are_chinese
+#   test_archive_requires_confirmation
+#   test_archive_executes_after_confirmation
+#   test_photo_delete_requires_confirmation
+#   test_confirmation_page_states_impact_and_reversibility
 #
 # 依賴套件：pytest, beautifulsoup4
 #
@@ -48,6 +52,13 @@ def _soup(html: str):
     from bs4 import BeautifulSoup
 
     return BeautifulSoup(html, "html.parser")
+
+
+def _reload(model, pk):
+    """在新的 app context 中重新讀取一筆資料（避免 detached instance）。"""
+    from app.extensions import db
+
+    return db.session.get(model, pk)
 
 
 def _post_settings_with_error(client):
@@ -115,3 +126,81 @@ def test_builtin_validation_messages_are_chinese(logged_in_client):
     assert any("一" <= ch <= "鿿" for ch in summary_text), (
         "錯誤摘要內應為中文訊息"
     )
+
+
+# ----------------------------------------------------------------------
+# 破壞性操作的二次確認（SAI §7.6）
+# ----------------------------------------------------------------------
+def test_archive_requires_confirmation(logged_in_client, sample_person, app):
+    """封存不得單擊即生效，必須先顯示確認頁。"""
+    from app.models.person import Person
+
+    response = logged_in_client.post(
+        f"/admin/people/{sample_person['id']}/archive", follow_redirects=False
+    )
+
+    assert response.status_code == 200, "第一次 POST 應回傳確認頁而非直接執行"
+    assert "確定要封存" in response.get_data(as_text=True)
+
+    with app.app_context():
+        person = _reload(Person, sample_person["id"])
+        assert person.publish_status != "archived", "確認前不得真的封存"
+
+
+def test_archive_executes_after_confirmation(logged_in_client, sample_person, app):
+    """帶 confirmed=1 之後才真正執行。"""
+    from app.models.person import Person
+
+    response = logged_in_client.post(
+        f"/admin/people/{sample_person['id']}/archive",
+        data={"confirmed": "1"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302, "確認後應執行並轉址（PRG）"
+
+    with app.app_context():
+        person = _reload(Person, sample_person["id"])
+        assert person.publish_status == "archived"
+
+
+def test_photo_delete_requires_confirmation(logged_in_client, app, png_bytes):
+    """移除照片同樣需要確認 —— 檔案刪掉就回不來了。"""
+    import io
+
+    from werkzeug.datastructures import FileStorage
+
+    from app.models.person import Person
+    from app.services.person_service import PersonService
+
+    with app.app_context():
+        person = PersonService.create(
+            {"name_zh": "確認測試", "status": "current", "research_focus_zh": "x"}
+        )
+        PersonService.attach_photo(
+            person,
+            FileStorage(stream=io.BytesIO(png_bytes), filename="p.png", content_type="image/png"),
+            alt_zh="測試照片",
+        )
+        person_id = person.id
+
+    response = logged_in_client.post(
+        f"/admin/people/{person_id}/photo/delete", follow_redirects=False
+    )
+    assert response.status_code == 200, "第一次 POST 應回傳確認頁"
+
+    with app.app_context():
+        assert _reload(Person, person_id).photo_path, "確認前不得刪除照片"
+
+
+def test_confirmation_page_states_impact_and_reversibility(logged_in_client, sample_person):
+    """確認頁必須說明「會影響什麼」與「能不能救回來」。
+
+    只寫「確定嗎？」等於沒有資訊；使用者無法據以判斷。
+    """
+    html = logged_in_client.post(
+        f"/admin/people/{sample_person['id']}/archive", follow_redirects=False
+    ).get_data(as_text=True)
+
+    assert "/people/" in html, "應說明前台網址會受影響"
+    assert "可" in html and "重新發布" in html, "應說明資料保留且可還原"

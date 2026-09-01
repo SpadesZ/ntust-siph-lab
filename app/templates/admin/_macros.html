@@ -144,9 +144,12 @@ NTUST SiPh Lab - Admin Form Macros
     這些都是 state-changing 操作，必須有 CSRF token
     （SAI §11.1）。GET 連結可被第三方以 <img> 觸發。
 
-  這裡刻意不使用 JS confirm() —— CSP 禁止 inline script，
-  且 SAI §7.5/§7.6 的「確認」是以獨立表單或說明文字達成，
-  不依賴瀏覽器對話框。
+  關於「二次確認」：
+    不使用 JS confirm()（CSP 禁止 inline script，且原生對話框
+    無法呈現影響範圍）。破壞性操作的確認由 route 端以獨立的
+    確認頁完成 —— 見 routes.py::_needs_confirmation 與
+    templates/admin/_confirm_action.html。
+    本巨集只負責產生按鈕，不處理確認流程。
 
   ★ 為什麼按鈕與 <form> 是分開的兩個巨集：
     這個巨集常被放在 person_form / research_form / settings

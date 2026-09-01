@@ -133,8 +133,14 @@ def test_person_unpublish_removes_from_public(logged_in_client, client, sample_p
 
 
 def test_person_archive_hides_but_keeps_data(logged_in_client, client, app, sample_person):
-    """archive 後前台隱藏但資料保留（SAI §7.6 預設不硬刪）。"""
-    response = logged_in_client.post(f"/admin/people/{sample_person['id']}/archive")
+    """archive 後前台隱藏但資料保留（SAI §7.6 預設不硬刪）。
+
+    confirmed=1 是二次確認的第二段；不帶它只會得到確認頁
+    （見 tests/test_admin_feedback.py::test_archive_requires_confirmation）。
+    """
+    response = logged_in_client.post(
+        f"/admin/people/{sample_person['id']}/archive", data={"confirmed": "1"}
+    )
     assert response.status_code == 302
     assert sample_person["name_zh"] not in client.get("/members").get_data(as_text=True)
 
@@ -226,8 +232,9 @@ def test_research_unpublish_and_archive(logged_in_client, client, app, sample_ou
     ).status_code == 302
     assert client.get(f"/research/{sample_output['slug']}").status_code == 404
 
+    # confirmed=1：archive 為破壞性操作，第一次 POST 只會得到確認頁。
     assert logged_in_client.post(
-        f"/admin/research/{sample_output['id']}/archive"
+        f"/admin/research/{sample_output['id']}/archive", data={"confirmed": "1"}
     ).status_code == 302
 
     from app.extensions import db
@@ -308,7 +315,11 @@ def test_person_photo_upload_then_delete(logged_in_client, app, sample_person):
         assert person.photo_path, "上傳後應記錄 object key"
         stored_key = person.photo_path
 
-    delete = logged_in_client.post(f"/admin/people/{sample_person['id']}/photo/delete")
+    # confirmed=1：移除照片為破壞性操作（檔案刪除無法復原），
+    # 第一次 POST 只會得到確認頁。
+    delete = logged_in_client.post(
+        f"/admin/people/{sample_person['id']}/photo/delete", data={"confirmed": "1"}
+    )
     assert delete.status_code == 302
 
     with app.app_context():

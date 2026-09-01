@@ -1,0 +1,73 @@
+{#
+============================================================
+NTUST SiPh Lab - 破壞性操作的確認頁
+
+上下游：
+  blueprints/admin/routes.py::_confirmation_page() -> 本模板
+  使用者按「確認」-> 帶 confirmed=1 再 POST 回同一個端點
+
+檔案路徑：app/templates/admin/_confirm_action.html
+建立日期：2026-09-01 / 版本：v1.0
+
+模組定位（SAI §7.5、§7.6）：
+  封存、移除照片、移除網站圖片等操作原本「單擊即生效」——
+  滑鼠滑過去手一抖就執行，而系統不提供永久刪除也沒有 Undo。
+  封存後的項目在列表預設不顯示，新手管理員會直接以為資料不見了。
+
+  _macros.html 的 confirm_button 註解原本描述了一個
+  「confirm 對話框訊息」參數，但巨集簽名裡根本沒有這個參數，
+  也就是說二次確認從來沒有被實作過。
+
+為什麼是獨立頁面而不是 JS 對話框：
+  CSP 禁止 inline script，且瀏覽器原生 confirm() 無法呈現
+  「這個操作會影響哪些東西」。獨立頁面可以列出實際影響範圍
+  （前台網址會失效、幾筆成果的作者列會變動），
+  讓管理者是在知情的狀況下按下確認。
+
+已知限制與禁止事項：
+  1. 禁止把確認步驟改回單擊直接執行。
+  2. 影響範圍（impact）必須是實際查詢出來的事實，不得寫死。
+
+驗證方式：
+  pytest tests/test_admin_feedback.py
+============================================================
+#}
+{% extends "admin/base.html" %}
+
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+<section class="admin-panel" aria-labelledby="confirm-heading">
+  <h2 class="admin-panel__title" id="confirm-heading">{{ title }}</h2>
+
+  {% if impact %}
+  <p class="form-section__hint" style="margin-bottom: var(--space-3);">
+    這個操作會造成以下影響：
+  </p>
+  <ul class="issue-list">
+    {% for line in impact %}
+    <li>{{ line }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if reversible %}
+  <p class="form-field__hint" style="margin-top: var(--space-4);">
+    {{ reversible }}
+  </p>
+  {% endif %}
+
+  <div style="display: flex; gap: var(--space-3); margin-top: var(--space-5); flex-wrap: wrap;">
+    <form method="post" action="{{ action }}">
+      {{ form.csrf_token }}
+      {# confirmed=1 是第二段的識別；缺少它時 route 會再次顯示本頁。 #}
+      <input type="hidden" name="confirmed" value="1">
+      {% for name, value in (extra_fields or {}).items() %}
+      <input type="hidden" name="{{ name }}" value="{{ value }}">
+      {% endfor %}
+      <button class="btn btn--danger" type="submit">{{ confirm_label }}</button>
+    </form>
+    <a class="btn btn--secondary" href="{{ cancel_url }}">取消</a>
+  </div>
+</section>
+{% endblock %}

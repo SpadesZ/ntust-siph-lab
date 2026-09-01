@@ -242,6 +242,12 @@ NTUST SiPh Lab - Admin Person Form (新增/編輯)
     　發布前系統會再次執行完整的發布門檻檢查。
     {% endif %}
   </p>
+  {# 這一區是獨立於上方表單的，改完欄位直接按發布會發布「已儲存的版本」。
+     這是後台最容易發生的誤操作之一，因此明講。 #}
+  <p class="form-field__hint" style="margin-bottom: var(--space-4);">
+    ⚠️ 這裡發布的是<strong>已儲存</strong>的版本。若你剛修改了上方欄位，
+    請先按「儲存變更」再發布。
+  </p>
 
   <div style="display: flex; gap: var(--space-3); flex-wrap: wrap;">
     {% if person.publish_status != 'published' %}
