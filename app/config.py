@@ -243,6 +243,20 @@ class BaseConfig:
     WTF_CSRF_ENABLED = True
     WTF_CSRF_TIME_LIMIT = None  # 與 session lifetime 綁定，不另設短效期
 
+    #: 關閉 Flask-WTF 的 i18n 轉接層，改用 WTForms 自己的翻譯機制。
+    #:
+    #: 為什麼：Flask-WTF 的 Meta.get_translations() 在此值為 True 時
+    #: 一律回傳它的 Babel 轉接器，完全略過 WTForms 的 Meta.locales。
+    #: 而該轉接器需要 flask-babel（本專案沒有安裝，也不打算為了
+    #: 幾十句驗證訊息引入整套 Babel）。結果是後台的驗證訊息
+    #: 全部落回英文預設值，在一片繁體中文介面裡出現
+    #: 「This field is required.」。
+    #:
+    #: 設為 False 後，Flask-WTF 會呼叫 super().get_translations()，
+    #: WTForms 便會依 AdminForm.Meta.locales 載入自己內建的
+    #: zh_TW 翻譯檔 —— 不需要任何額外相依。
+    WTF_I18N_ENABLED = False
+
     # --- 上傳限制（SAI §16）---
     #: 8 MB。超過由 Flask 直接回 413，MediaService 另有副檔名/MIME 檢查。
     MAX_CONTENT_LENGTH = _env_int("MAX_CONTENT_LENGTH", 8 * 1024 * 1024)

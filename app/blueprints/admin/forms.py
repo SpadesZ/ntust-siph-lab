@@ -105,6 +105,30 @@ from app.models.research_output import ResearchOutput
 from app.utils.validators import is_valid_email, is_valid_url
 
 
+class AdminForm(FlaskForm):
+    """後台表單共同基底：把 WTForms 的內建訊息切換為繁體中文。
+
+    為什麼需要：
+      整個後台介面是繁體中文，但只有 4 個欄位帶了 message=，
+      其餘約 44 個 Length / NumberRange / DataRequired 都會落回
+      WTForms 的英文預設值 —— 使用者實際看到的是
+      「This field is required.」夾在一片中文裡。
+
+      逐欄位補 message= 需要改四十多處，且日後新增欄位一定會漏。
+      改用 WTForms 內建的 locale 機制，一次覆蓋全部驗證器，
+      新欄位自動適用。
+
+    為什麼不是設在 app 層級：
+      這是後台表單的呈現語言，與公開站的 i18n（app/i18n.py）
+      是不同的關注點；公開站不使用 WTForms。
+    """
+
+    class Meta:
+        #: WTForms 內建 zh_TW 與 zh 翻譯檔；找不到對應字串時
+        #: 自動回落英文，不會因缺翻譯而讓表單壞掉。
+        locales = ["zh_TW", "zh"]
+
+
 class SafeUrl:
     """URL 格式與 scheme 驗證（SAI §15.1 Links、§15.2 Publication）。
 
@@ -216,7 +240,7 @@ _IMAGE_MESSAGE = "只允許 jpg / jpeg / png / webp 圖片（SAI §16）。"
 _IMAGE_ACCEPT = ",".join(f".{ext}" for ext in _IMAGE_EXTENSIONS)
 
 
-class ConfirmForm(FlaskForm):
+class ConfirmForm(AdminForm):
     """僅含 CSRF token 的確認表單。
 
     用於發布、取消發布、封存、精選、刪除照片等「不需要輸入
@@ -226,7 +250,7 @@ class ConfirmForm(FlaskForm):
     submit = SubmitField("確認")
 
 
-class PersonForm(FlaskForm):
+class PersonForm(AdminForm):
     """人物新增/編輯表單（SAI §15.1、§15.3）。"""
 
     # --- Identity ---
@@ -412,7 +436,7 @@ class PersonForm(FlaskForm):
         self.is_featured.data = person.is_featured
 
 
-class GraduateForm(FlaskForm):
+class GraduateForm(AdminForm):
     """在學轉畢業表單（SAI §7.5 的確認視窗）。"""
 
     graduation_year = IntegerField(
@@ -428,7 +452,7 @@ class GraduateForm(FlaskForm):
     submit = SubmitField("確認轉為畢業生")
 
 
-class ResearchForm(FlaskForm):
+class ResearchForm(AdminForm):
     """研究成果新增/編輯表單（SAI §15.2）。"""
 
     # --- Identity ---
@@ -584,7 +608,7 @@ class ResearchForm(FlaskForm):
         self.sort_order.data = output.sort_order
 
 
-class SiteSettingForm(FlaskForm):
+class SiteSettingForm(AdminForm):
     """網站設定表單（SAI §15.4 的六個 tab）。
 
     研究主題 / 可驗證事實 / 外部連結三組可變長度資料
@@ -783,7 +807,7 @@ class SiteSettingForm(FlaskForm):
         return records
 
 
-class ChangePasswordForm(FlaskForm):
+class ChangePasswordForm(AdminForm):
     """修改管理員密碼（SAI §7.3 System 選單）。
 
     要求輸入舊密碼：這是「已登入使用者主動修改」的情境，
