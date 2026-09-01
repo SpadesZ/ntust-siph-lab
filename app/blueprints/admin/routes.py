@@ -282,11 +282,9 @@ def person_edit(person_id: int):
 
     if form.validate_on_submit():
         admin_id, ip = _actor()
-        try:
-            PersonService.update(person, form.to_dict(), admin_user_id=admin_id, ip_address=ip)
-            _handle_person_photo(person, form)
-        except (PersonServiceError, MediaError) as exc:
-            flash(str(exc), "error")
+
+        def _rerender(message: str):
+            flash(message, "error")
             return render_template(
                 "admin/person_form.html",
                 form=form,
@@ -294,6 +292,22 @@ def person_edit(person_id: int):
                 validation=PublishValidator.validate_person(person),
                 graduate_form=GraduateForm(),
                 confirm_form=ConfirmForm(),
+            )
+
+        try:
+            PersonService.update(person, form.to_dict(), admin_user_id=admin_id, ip_address=ip)
+        except PersonServiceError as exc:
+            return _rerender(str(exc))
+
+        # 到這裡文字欄位已經 commit。照片是獨立的後續步驟，
+        # 失敗時必須明說「哪一半成功了」——否則使用者以為整筆都沒存，
+        # 會把整份表單重填一次（理由同 person_new 的 NOTE-003）。
+        try:
+            _handle_person_photo(person, form)
+        except (PersonServiceError, MediaError) as exc:
+            return _rerender(
+                f"「{person.name_zh}」的文字內容已儲存，但照片未能上傳：{exc} "
+                "請重新選擇照片即可，其他欄位不需要重填。"
             )
 
         flash(f"已更新「{person.name_zh}」。", "success")
@@ -538,19 +552,31 @@ def research_edit(output_id: int):
 
     if form.validate_on_submit():
         admin_id, ip = _actor()
-        try:
-            ResearchService.update(
-                output, form.to_dict(), admin_user_id=admin_id, ip_address=ip
-            )
-            _handle_research_image(output, form)
-        except (ResearchServiceError, MediaError) as exc:
-            flash(str(exc), "error")
+
+        def _rerender(message: str):
+            flash(message, "error")
             return render_template(
                 "admin/research_form.html",
                 form=form,
                 output=output,
                 validation=PublishValidator.validate_research(output),
                 confirm_form=ConfirmForm(),
+            )
+
+        try:
+            ResearchService.update(
+                output, form.to_dict(), admin_user_id=admin_id, ip_address=ip
+            )
+        except ResearchServiceError as exc:
+            return _rerender(str(exc))
+
+        # 理由同 person_edit：文字已 commit，主圖失敗要說清楚。
+        try:
+            _handle_research_image(output, form)
+        except (ResearchServiceError, MediaError) as exc:
+            return _rerender(
+                f"「{output.display_title}」的文字內容已儲存，但主圖未能上傳：{exc} "
+                "請重新選擇圖片即可，其他欄位不需要重填。"
             )
 
         flash(f"已更新「{output.display_title}」。", "success")
@@ -698,6 +724,22 @@ def _repeat_context(setting, *, from_form: bool) -> dict[str, list[dict]]:
     return {prefix: getattr(setting, prefix) for prefix in _REPEAT_SPECS}
 
 
+def _render_settings(form, setting, *, from_form: bool):
+    """渲染設定頁。
+
+    抽成函式的理由：POST 失敗有多個 return 點（驗證錯誤、
+    圖片上傳失敗），每個都必須帶上正確的 repeats ——
+    漏掉任何一個就會重現「多值列消失」的缺陷。
+    """
+    return render_template(
+        "admin/settings.html",
+        form=form,
+        setting=setting,
+        repeats=_repeat_context(setting, from_form=from_form),
+        confirm_form=ConfirmForm(),
+    )
+
+
 @admin_bp.route("/settings", methods=["GET", "POST"])
 def settings():
     """網站設定（SAI §15.4 六個 tab）。"""
@@ -709,37 +751,48 @@ def settings():
         data = form.to_dict()
         data.update(_parse_repeat_blocks())
 
+        notices: list[str] = []
         try:
-            SettingsService.update(data, admin_user_id=admin_id, ip_address=ip)
-
-            # 三個圖片欄位各自獨立處理，任何一個失敗都不影響其他欄位
-            # 已儲存的文字設定（它們在上面已經 commit）。
-            for field_name, storage_field in (
-                ("logo", "logo_path"),
-                ("hero_media", "hero_media_path"),
-                ("og_image", "og_image_path"),
-            ):
-                uploaded = getattr(form, field_name).data
-                if uploaded and getattr(uploaded, "filename", ""):
-                    SettingsService.update_media(
-                        storage_field, uploaded, admin_user_id=admin_id, ip_address=ip
-                    )
-
-            flash("已更新網站設定。", "success")
-            return redirect(url_for("admin.settings"))
-        except (SettingsServiceError, MediaError) as exc:
+            SettingsService.update(
+                data, admin_user_id=admin_id, ip_address=ip, notices=notices
+            )
+        except SettingsServiceError as exc:
             flash(str(exc), "error")
+            return _render_settings(form, setting, from_form=True)
+
+        # 文字設定到這裡已經 commit。三個圖片欄位各自獨立處理，
+        # 任何一個失敗都不影響已儲存的文字內容 —— 因此錯誤訊息
+        # 必須明說這件事，否則使用者會以為整筆都失敗而重做一次
+        # （理由同 person_new 的 NOTE-003）。
+        for field_name, storage_field in (
+            ("logo", "logo_path"),
+            ("hero_media", "hero_media_path"),
+            ("og_image", "og_image_path"),
+        ):
+            uploaded = getattr(form, field_name).data
+            if not uploaded or not getattr(uploaded, "filename", ""):
+                continue
+            try:
+                SettingsService.update_media(
+                    storage_field, uploaded, admin_user_id=admin_id, ip_address=ip
+                )
+            except (SettingsServiceError, MediaError) as exc:
+                flash(
+                    f"文字設定已儲存，但「{getattr(form, field_name).label.text}」"
+                    f"未能上傳：{exc} 請重新上傳該圖片即可，不需要重填其他欄位。",
+                    "error",
+                )
+                return _render_settings(form, setting, from_form=True)
+
+        for notice in notices:
+            flash(notice, "warning")
+        flash("已更新網站設定。", "success")
+        return redirect(url_for("admin.settings"))
 
     if request.method == "GET":
         form.load_from(setting)
 
-    return render_template(
-        "admin/settings.html",
-        form=form,
-        setting=setting,
-        repeats=_repeat_context(setting, from_form=request.method == "POST"),
-        confirm_form=ConfirmForm(),
-    )
+    return _render_settings(form, setting, from_form=request.method == "POST")
 
 
 @admin_bp.route("/settings/media/<field>/delete", methods=["POST"])

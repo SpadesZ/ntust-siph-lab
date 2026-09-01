@@ -23,6 +23,7 @@
 #     2. 空輸入 -> 仍然可以正常清空（不能為了防呆而不能清空）
 #     3. 表單層要先擋下來，讓使用者看得到欄位級錯誤
 #     4. 驗證失敗重新渲染時 -> 不得把使用者剛填的多值列還原掉
+#     5. 多值列被略過時 -> 必須說明「哪一列、為什麼」，不得無聲丟棄
 #
 # 主要 Function：
 #   test_invalid_email_does_not_wipe_existing_contact
@@ -33,6 +34,9 @@
 #   test_publication_date_accepts_valid_iso_date
 #   test_validation_failure_preserves_repeat_rows
 #   test_get_settings_shows_stored_repeat_rows
+#   test_dropped_link_row_is_reported
+#   test_dropped_focus_row_is_reported
+#   test_fully_blank_rows_are_silently_ignored
 #
 # 依賴套件：pytest
 #
@@ -215,6 +219,55 @@ def test_validation_failure_preserves_repeat_rows(logged_in_client):
             f"驗證失敗後「{typed}」從畫面上消失了 —— "
             "使用者剛輸入的多值列被資料庫舊值覆蓋，且沒有任何提示"
         )
+
+
+def test_dropped_link_row_is_reported(app):
+    """外部連結只填名稱沒填網址時，必須告知該列未儲存。
+
+    原本 _clean_links 直接 continue，整列消失且畫面回報「已更新」。
+    """
+    from app.services.settings_service import SettingsService
+
+    with app.app_context():
+        notices: list[str] = []
+        SettingsService.update(
+            {"social_links": [{"label": "研究室 Facebook", "url": ""}]}, notices=notices
+        )
+
+        assert notices, "被略過的列必須產生提示，不得無聲丟棄"
+        assert any("外部連結" in n and "研究室 Facebook" in n for n in notices), notices
+
+
+def test_dropped_focus_row_is_reported(app):
+    """研究方向填了說明卻沒填主題名稱時，必須告知該列未儲存。"""
+    from app.services.settings_service import SettingsService
+
+    with app.app_context():
+        notices: list[str] = []
+        SettingsService.update(
+            {"research_focus": [{"title_zh": "", "description_zh": "只填了說明"}]},
+            notices=notices,
+        )
+
+        assert any("研究方向" in n for n in notices), notices
+
+
+def test_fully_blank_rows_are_silently_ignored(app):
+    """整列皆空是畫面上刻意保留的空白列，不該產生噪音提示。"""
+    from app.services.settings_service import SettingsService
+
+    with app.app_context():
+        notices: list[str] = []
+        SettingsService.update(
+            {
+                "research_focus": [{"title_zh": "", "title_en": "", "description_zh": ""}],
+                "social_links": [{"label": "", "url": ""}],
+                "lab_proof": [{"label_zh": "", "value_zh": "", "source": ""}],
+            },
+            notices=notices,
+        )
+
+        assert notices == [], f"空白列不該產生提示：{notices}"
 
 
 def test_get_settings_shows_stored_repeat_rows(logged_in_client, app):
