@@ -34,7 +34,7 @@ NTUST SiPh Lab - Admin People List (/admin/people)
 ============================================================
 #}
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import status_badge %}
+{% from "admin/_macros.html" import status_badge, status_filter_bar %}
 
 {% block page_title %}研究成員{% endblock %}
 
@@ -50,6 +50,10 @@ NTUST SiPh Lab - Admin People List (/admin/people)
 {% endblock %}
 
 {% block content %}
+
+{# ---------- 發布狀態快速篩選（含「已封存」入口） ---------- #}
+{{ status_filter_bar('admin.people_list', publish_counts, active_publish_status,
+                     {'status': active_status} if active_status else {}) }}
 
 {# ---------- 篩選與搜尋 ---------- #}
 <form class="filter-bar" method="get" action="{{ url_for('admin.people_list') }}"

@@ -32,7 +32,7 @@ NTUST SiPh Lab - Admin Research List (/admin/research)
 ============================================================
 #}
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import status_badge %}
+{% from "admin/_macros.html" import status_badge, status_filter_bar %}
 
 {% block page_title %}研究成果{% endblock %}
 
@@ -48,6 +48,10 @@ NTUST SiPh Lab - Admin Research List (/admin/research)
 {% endblock %}
 
 {% block content %}
+
+{# ---------- 發布狀態快速篩選（含「已封存」入口） ---------- #}
+{{ status_filter_bar('admin.research_list', publish_counts, active_publish_status,
+                     {'type': active_type} if active_type else {}) }}
 
 <form class="filter-bar" method="get" action="{{ url_for('admin.research_list') }}"
       role="search" aria-label="研究成果篩選">

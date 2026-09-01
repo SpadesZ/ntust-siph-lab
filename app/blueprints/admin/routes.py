@@ -241,11 +241,20 @@ def people_list():
     publish_status = request.args.get("publish_status") or None
     query = (request.args.get("q") or "").strip() or None
 
+    # 各發布狀態的筆數（快速篩選列用）。count_by_status() 是
+    # 以人物身分為外層的巢狀 dict，這裡壓成單層。
+    nested = people_repo.count_by_status()
+    publish_counts = {
+        state: sum(per_status.get(state, 0) for per_status in nested.values())
+        for state in PublishStatus.ALL
+    }
+
     return render_template(
         "admin/people_list.html",
         people=people_repo.admin_list(
             status=status, publish_status=publish_status, query=query
         ),
+        publish_counts=publish_counts,
         active_status=status,
         active_publish_status=publish_status,
         active_query=query,
@@ -503,10 +512,45 @@ def person_photo_delete(person_id: int):
 # ----------------------------------------------------------------------
 @admin_bp.route("/alumni")
 def alumni_list():
-    """畢業生年度列表（SAI §7.3）。"""
+    """畢業生年度列表（SAI §7.3）。
+
+    原本沒有任何搜尋或篩選 —— 畢業生會逐年累積，
+    幾年後這頁就只能靠瀏覽器的 Ctrl+F 找人。
+    """
+    from app.utils.validators import validate_year
+
+    query = (request.args.get("q") or "").strip() or None
+    year = validate_year(request.args.get("year"))
+
+    groups = people_repo.list_alumni_by_year(published_only=False)
+
+    if year:
+        groups = [(y, people) for y, people in groups if y == year]
+
+    if query:
+        needle = query.lower()
+
+        def _matches(person) -> bool:
+            haystack = (
+                person.name_zh or "",
+                person.name_en or "",
+                person.slug or "",
+                person.current_affiliation or "",
+            )
+            return any(needle in value.lower() for value in haystack)
+
+        groups = [
+            (y, [p for p in people if _matches(p)])
+            for y, people in groups
+        ]
+        groups = [(y, people) for y, people in groups if people]
+
     return render_template(
         "admin/alumni_list.html",
-        alumni_groups=people_repo.list_alumni_by_year(published_only=False),
+        alumni_groups=groups,
+        available_years=[y for y, _ in people_repo.list_alumni_by_year(published_only=False) if y],
+        active_year=year,
+        active_query=query,
         confirm_form=ConfirmForm(),
     )
 
@@ -573,6 +617,7 @@ def research_list():
         outputs=research_repo.admin_list(
             output_type=output_type, year=year, publish_status=publish_status, query=query
         ),
+        publish_counts=research_repo.count_by_status(),
         available_years=research_repo.admin_available_years(),
         output_types=OutputType.ALL,
         type_labels=OutputType.LABELS_ZH,
@@ -691,6 +736,30 @@ def research_edit(output_id: int):
         validation=PublishValidator.validate_research(output),
         confirm_form=ConfirmForm(),
     )
+
+
+@admin_bp.route("/research/<int:output_id>/duplicate", methods=["POST"])
+def research_duplicate(output_id: int):
+    """以既有成果為範本建立新草稿（SAI §7.3 維護效率）。"""
+    source = db.session.get(ResearchOutput, output_id)
+    if source is None:
+        abort(404)
+    if not ConfirmForm().validate_on_submit():
+        abort(400)
+
+    admin_id, ip = _actor()
+    try:
+        copy = ResearchService.duplicate(source, admin_user_id=admin_id, ip_address=ip)
+    except ResearchServiceError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("admin.research_edit", output_id=output_id))
+
+    flash(
+        f"已以「{source.display_title}」為範本建立新草稿。"
+        "DOI、出版日期與主圖沒有一併複製，請依這一篇的實際資訊填寫。",
+        "success",
+    )
+    return redirect(url_for("admin.research_edit", output_id=copy.id))
 
 
 @admin_bp.route("/research/<int:output_id>/publish", methods=["POST"])
