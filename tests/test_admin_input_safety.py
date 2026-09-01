@@ -270,6 +270,61 @@ def test_fully_blank_rows_are_silently_ignored(app):
         assert notices == [], f"空白列不該產生提示：{notices}"
 
 
+# ----------------------------------------------------------------------
+# 4. 從表單移除的欄位，不得在儲存時被清空
+# ----------------------------------------------------------------------
+#: 已從後台表單移除但仍保留 DB 欄位與資料的項目。
+#: 移除表單欄位後，to_dict() 不再帶這個 key；若 service 仍然
+#: 無條件 `setattr(obj, field, normalize(data.get(field)))`，
+#: 每次儲存都會把既有資料清成 None —— 使用者甚至看不到欄位，
+#: 完全無從察覺資料正在流失。
+def test_settings_save_does_not_wipe_removed_fields(app):
+    """儲存設定不得清掉已從表單移除的 short_name / production_base_url。"""
+    from app.models.site_setting import SiteSetting
+    from app.services.settings_service import SettingsService
+
+    with app.app_context():
+        # 以「明確傳入」的方式建立既有資料（seed / CLI 的用法）
+        SettingsService.update(
+            {"short_name": "SiPh Lab", "production_base_url": "https://example.edu"}
+        )
+        assert SiteSetting.get().short_name == "SiPh Lab"
+
+        # 模擬後台表單儲存：payload 不含這兩個 key
+        SettingsService.update({"lab_name_zh": "測試研究室", "lab_name_en": "Test Lab"})
+
+        setting = SiteSetting.get()
+        assert setting.short_name == "SiPh Lab", "表單儲存把已移除欄位的資料清掉了"
+        assert setting.production_base_url == "https://example.edu"
+
+
+def test_person_save_does_not_wipe_removed_alt_en(app):
+    """儲存人物不得清掉已從表單移除的 photo_alt_en。"""
+    from app.models.person import Person
+    from app.services.person_service import PersonService
+
+    with app.app_context():
+        person = PersonService.create(
+            {
+                "name_zh": "欄位保留測試",
+                "status": "current",
+                "research_focus_zh": "x",
+                "photo_alt_en": "Portrait of the researcher",
+            }
+        )
+        person_id = person.id
+        assert person.photo_alt_en == "Portrait of the researcher"
+
+        # 模擬後台表單儲存：payload 不含 photo_alt_en
+        PersonService.update(person, {"name_zh": "欄位保留測試", "status": "current"})
+
+        from app.extensions import db
+
+        assert db.session.get(Person, person_id).photo_alt_en == (
+            "Portrait of the researcher"
+        ), "表單儲存把已移除欄位的資料清掉了"
+
+
 def test_get_settings_shows_stored_repeat_rows(logged_in_client, app):
     """GET 時仍要顯示資料庫既有的多值資料（不能為了修 POST 而弄壞 GET）。"""
     from app.services.settings_service import SettingsService

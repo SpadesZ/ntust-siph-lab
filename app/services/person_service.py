@@ -233,7 +233,11 @@ class PersonService:
         person.external_url_label = normalize_text(data.get("external_url_label"))
 
         person.photo_alt_zh = normalize_text(data.get("photo_alt_zh"))
-        person.photo_alt_en = normalize_text(data.get("photo_alt_en"))
+        # photo_alt_en 已不由後台表單維護（公開模板一律讀 photo_alt_zh）。
+        # 只在呼叫端明確傳入時才寫入 —— 否則表單每次送出都會
+        # 因為 data 沒有這個 key 而把既有資料清成 None。
+        if "photo_alt_en" in data:
+            person.photo_alt_en = normalize_text(data.get("photo_alt_en"))
 
         if data.get("sort_order") is not None:
             try:

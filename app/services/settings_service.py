@@ -123,7 +123,14 @@ class SettingsService:
 
         表單層（SafeEmail / SafeUrl）已經會先擋下來，這裡是
         第二道防線：seed script 與 CLI 不經過表單，仍需保護。
+
+        欄位完全不在 data 裡時「不碰它」：呼叫端沒有提到這個欄位，
+        與「呼叫端要求清空」是兩件事。少了這個區分，
+        任何從表單移除的欄位都會在每次儲存時被清成 None。
         """
+        if field not in data:
+            return
+
         raw = data.get(field)
 
         if normalize_text(raw) is None:
@@ -160,7 +167,10 @@ class SettingsService:
         if lab_name_en:
             setting.lab_name_en = lab_name_en
 
-        setting.short_name = normalize_text(data.get("short_name"))
+        # short_name 已不由後台表單維護（全專案沒有任何地方讀取它）。
+        # 只在呼叫端明確傳入時才寫入，避免每次儲存把既有資料清空。
+        if "short_name" in data:
+            setting.short_name = normalize_text(data.get("short_name"))
         setting.department_zh = normalize_text(data.get("department_zh"))
         setting.department_en = normalize_text(data.get("department_en"))
         setting.university_zh = normalize_text(data.get("university_zh"))
