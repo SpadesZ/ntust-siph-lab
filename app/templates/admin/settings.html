@@ -196,7 +196,7 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
         </div>
         <div class="form-field">
           <label class="form-field__label" for="proof-source-{{ loop.index0 }}">來源網址（選填）</label>
-          <input class="input" id="proof-source-{{ loop.index0 }}" type="url"
+          <input class="input" id="proof-source-{{ loop.index0 }}" type="text" inputmode="url"
                  name="lab_proof-source" value="{{ item.get('source', '') }}">
         </div>
       </div>
@@ -270,7 +270,7 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
         </div>
         <div class="form-field">
           <label class="form-field__label" for="link-url-{{ loop.index0 }}">網址</label>
-          <input class="input" id="link-url-{{ loop.index0 }}" type="url"
+          <input class="input" id="link-url-{{ loop.index0 }}" type="text" inputmode="url"
                  name="social_links-url" value="{{ item.get('url', '') }}">
         </div>
       </div>

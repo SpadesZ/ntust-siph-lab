@@ -114,6 +114,10 @@ logger = logging.getLogger(__name__)
 #: research_outputs.slug 欄位長度 VARCHAR(160)，保留後綴空間。
 _SLUG_MAX = 150
 
+#: 排序值留空時回到的預設，與 ResearchOutput.sort_order 的
+#: model default 一致；兩處不同會讓「清空後」與「新建時」排序不一樣。
+_DEFAULT_SORT_ORDER = 100
+
 
 class ResearchServiceError(RuntimeError):
     """業務規則違反；訊息可直接顯示給管理員。"""
@@ -246,11 +250,16 @@ class ResearchService:
         if "hero_image_alt_en" in data:
             output.hero_image_alt_en = normalize_text(data.get("hero_image_alt_en"))
 
-        if data.get("sort_order") is not None:
-            try:
-                output.sort_order = int(data["sort_order"])
-            except (TypeError, ValueError):
-                pass
+        if "sort_order" in data:
+            # 留空 -> 回到預設值（理由同 PersonService：
+            # 原本的 is not None 判斷讓「清空排序值」變成不可能）。
+            if data["sort_order"] in (None, ""):
+                output.sort_order = _DEFAULT_SORT_ORDER
+            else:
+                try:
+                    output.sort_order = int(data["sort_order"])
+                except (TypeError, ValueError):
+                    pass
 
         output.seo_title_zh = normalize_text(data.get("seo_title_zh"))
         output.seo_description_zh = normalize_text(data.get("seo_description_zh"))

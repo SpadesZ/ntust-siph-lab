@@ -104,6 +104,22 @@ from app.models.research_output import ResearchOutput
 from app.utils.validators import is_valid_email, is_valid_url
 
 
+def _strip(value):
+    """WTForms filter：送進驗證器之前先去掉前後空白。
+
+    為什麼需要：
+      瀏覽器的 HTML5 required 只檢查「非空字串」，因此
+      「   」（純空白）會通過前端驗證並送出，
+      再由伺服器端的 DataRequired（會 strip）判定失敗。
+
+      結果是使用者填了看起來有東西的欄位卻被退回，
+      而且送出前完全沒有提示。加上這個 filter 之後，
+      表單層與瀏覽器對「有沒有填」的判斷一致，
+      同時也讓所有欄位的前後空白不會進到資料庫。
+    """
+    return value.strip() if isinstance(value, str) else value
+
+
 class AdminForm(FlaskForm):
     """後台表單共同基底：把 WTForms 的內建訊息切換為繁體中文。
 
@@ -126,6 +142,27 @@ class AdminForm(FlaskForm):
         #: WTForms 內建 zh_TW 與 zh 翻譯檔；找不到對應字串時
         #: 自動回落英文，不會因缺翻譯而讓表單壞掉。
         locales = ["zh_TW", "zh"]
+
+        def bind_field(self, form, unbound_field, options):
+            """統一為所有文字欄位加上 strip filter（見 _strip）。
+
+            為什麼在這裡做而不是逐欄位加 filters=：
+              後台超過 80 個欄位，逐一加不但改動巨大，
+              日後新增欄位也一定會漏 —— 而漏掉的症狀
+              （空白字元繞過必填）不會有任何明顯跡象。
+
+            PasswordField 明確排除：密碼的前後空白是使用者
+            實際輸入的一部分，擅自去掉會讓既有密碼登入失敗。
+            """
+            if not isinstance(unbound_field.field_class, type) or not issubclass(
+                unbound_field.field_class, PasswordField
+            ):
+                filters = list(unbound_field.kwargs.get("filters", ()))
+                if _strip not in filters:
+                    filters.append(_strip)
+                unbound_field.kwargs["filters"] = filters
+
+            return unbound_field.bind(form=form, **options)
 
 
 class SafeUrl:
@@ -436,8 +473,26 @@ class PersonForm(AdminForm):
         self.is_featured.data = person.is_featured
 
 
+#: GraduateForm 的欄位前綴。
+#:
+#: 為什麼需要：GraduateForm 的 graduation_year / degree /
+#: thesis_title_zh 與 PersonForm 同名，而兩份表單渲染在同一頁上。
+#: WTForms 以欄位名產生 id，因此頁面會出現重複的 id ——
+#: 那不只是 HTML 無效，更直接的後果是「轉為畢業生」區塊裡的
+#: <label for="degree"> 會指到上方主表單的欄位，
+#: 點標籤時游標跳到錯誤的輸入框。
+#:
+#: 加上 prefix 後 name 與 id 都變成 graduate-*，衝突消失。
+#: 注意：render 與讀取 POST 兩邊都必須帶同一個 prefix，
+#: 否則會變成「填了但讀不到」。
+GRADUATE_FORM_PREFIX = "graduate"
+
+
 class GraduateForm(AdminForm):
-    """在學轉畢業表單（SAI §7.5 的確認視窗）。"""
+    """在學轉畢業表單（SAI §7.5 的確認視窗）。
+
+    實例化時必須帶 prefix=GRADUATE_FORM_PREFIX（見該常數說明）。
+    """
 
     graduation_year = IntegerField(
         "畢業年度 *",
@@ -848,8 +903,35 @@ class SiteSettingForm(AdminForm):
           純 HTML 表單新增列時不需要 JS 就能運作
           （SAI §6.3 禁止「hover 才出現唯一操作」的精神延伸：
           功能不應該完全依賴 JS）。
+
+        ★ 索引對齊的隱性前提（務必遵守）：
+          「每一列的每個欄位都必須送出，即使是空值。」
+          text/url 這類 input 空值也會送出，因此成立。
+
+          但 checkbox 未勾選時「完全不會出現在 POST 裡」。
+          只要有人在 repeat row 加一個 checkbox，該欄位的
+          list 就會比其他欄位短，從那一列開始所有欄位橫向錯位 ——
+          A 的網址會配到 B 的名稱上，而且不會有任何錯誤，
+          資料就這樣靜靜地錯了。
+
+          因此在下方明確檢查各欄位長度是否一致，不一致就拋錯，
+          讓問題在開發期就爆出來而不是變成髒資料。
+          若真的需要 checkbox，請改用 hidden + checkbox 配對送值，
+          或改以 id 為 key（見 ResearchForm.parse_author_orders）。
+
+        Raises:
+            ValueError: 各欄位送出的數量不一致（見上）。
         """
         columns = {key: form_data.getlist(f"{prefix}-{key}") for key in keys}
+
+        lengths = {key: len(values) for key, values in columns.items()}
+        if len(set(lengths.values())) > 1:
+            raise ValueError(
+                f"{prefix} 的重複欄位長度不一致：{lengths}。"
+                "repeat row 內不得使用 checkbox 或任何『未選取就不送出』的控制項，"
+                "否則欄位會橫向錯位（見 parse_repeated 的說明）。"
+            )
+
         length = max((len(values) for values in columns.values()), default=0)
 
         records: list[dict] = []
