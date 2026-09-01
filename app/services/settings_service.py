@@ -102,8 +102,50 @@ class SettingsService:
     """全站設定寫入（SAI §8.6、§15.4）。"""
 
     @staticmethod
+    def _assign_normalized(
+        setting: SiteSetting,
+        data: dict,
+        errors: list[str],
+        field: str,
+        label: str,
+        normalizer,
+    ) -> None:
+        """正規化後指派；輸入非空卻無法正規化時「不覆寫」並記錄錯誤。
+
+        為什麼需要區分兩種「結果是 None」：
+          normalize_email / normalize_url 對「空輸入」與「格式錯誤」
+          都回傳 None。直接指派會讓這兩種情況都清空欄位 ——
+          於是管理者把 Email 打錯一個字，就把研究室對外的
+          聯絡信箱整個清掉，而系統還回報「已更新」。
+
+          空輸入  -> 使用者確實想清空，指派 None（合法）。
+          格式錯  -> 保留原值並回報錯誤，絕不覆寫。
+
+        表單層（SafeEmail / SafeUrl）已經會先擋下來，這裡是
+        第二道防線：seed script 與 CLI 不經過表單，仍需保護。
+        """
+        raw = data.get(field)
+
+        if normalize_text(raw) is None:
+            setattr(setting, field, None)
+            return
+
+        value = normalizer(raw)
+        if value is None:
+            errors.append(f"「{label}」格式不正確（{str(raw).strip()}），已保留原本的值。")
+            return
+
+        setattr(setting, field, value)
+
+    @staticmethod
     def _assign_fields(setting: SiteSetting, data: dict) -> None:
-        """把表單資料寫入設定欄位（逐 tab 對應 SAI §15.4）。"""
+        """把表單資料寫入設定欄位（逐 tab 對應 SAI §15.4）。
+
+        Raises:
+            SettingsServiceError: 有欄位「非空但格式不合法」。
+                寧可整筆拒絕也不要靜默覆寫既有正確資料。
+        """
+        errors: list[str] = []
 
         # --- Lab Identity ---
         lab_name_zh = normalize_text(data.get("lab_name_zh"))
@@ -140,26 +182,41 @@ class SettingsService:
         setting.about_methods_zh = normalize_multiline(data.get("about_methods_zh"))
 
         # --- Join & Contact ---
-        setting.contact_email = normalize_email(data.get("contact_email"))
+        # Email 與 URL 一律走 _assign_normalized：它們是唯一
+        # 「正規化失敗會回 None」的欄位，也就是會靜默清空資料的來源。
+        SettingsService._assign_normalized(
+            setting, data, errors, "contact_email", "聯絡 Email", normalize_email
+        )
         setting.address_zh = normalize_multiline(data.get("address_zh"))
         setting.address_en = normalize_multiline(data.get("address_en"))
-        setting.map_url = normalize_url(data.get("map_url"))
+        SettingsService._assign_normalized(
+            setting, data, errors, "map_url", "地圖連結", normalize_url
+        )
         setting.join_title_zh = normalize_text(data.get("join_title_zh"))
         setting.join_body_zh = normalize_multiline(data.get("join_body_zh"))
         setting.join_cta_label_zh = normalize_text(data.get("join_cta_label_zh"))
-        setting.join_cta_url = normalize_url(data.get("join_cta_url"))
+        SettingsService._assign_normalized(
+            setting, data, errors, "join_cta_url", "招募按鈕連結", normalize_url
+        )
 
         # --- SEO defaults ---
         setting.default_title_suffix = normalize_text(data.get("default_title_suffix"))
         setting.default_description_zh = normalize_text(data.get("default_description_zh"))
-        setting.production_base_url = normalize_url(data.get("production_base_url"))
+        SettingsService._assign_normalized(
+            setting, data, errors, "production_base_url", "正式網域紀錄", normalize_url
+        )
 
         # --- External identity ---
-        setting.official_ntust_url = normalize_url(data.get("official_ntust_url"))
+        SettingsService._assign_normalized(
+            setting, data, errors, "official_ntust_url", "NTUST 官方頁連結", normalize_url
+        )
 
         # --- Advanced ---
         if "llms_txt_enabled" in data:
             setting.llms_txt_enabled = bool(data.get("llms_txt_enabled"))
+
+        if errors:
+            raise SettingsServiceError(" ".join(errors))
 
     @staticmethod
     def _clean_focus(items) -> list[dict]:
@@ -228,7 +285,14 @@ class SettingsService:
     ) -> SiteSetting:
         """更新全站設定。"""
         setting = SiteSetting.get()
-        SettingsService._assign_fields(setting, data)
+
+        try:
+            SettingsService._assign_fields(setting, data)
+        except SettingsServiceError:
+            # _assign_fields 在發現問題前可能已寫入部分欄位；
+            # rollback 確保「整筆拒絕」而不是留下半套狀態。
+            db.session.rollback()
+            raise
 
         AuditLog.write(
             action=AuditAction.UPDATE,
