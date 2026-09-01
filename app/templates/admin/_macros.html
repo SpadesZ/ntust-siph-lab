@@ -174,9 +174,13 @@ NTUST SiPh Lab - Admin Form Macros
    若留在主表單內，會被主表單的送出一起帶上）。 #}
 <button class="{{ css }}" type="submit" form="{{ form_id }}">{{ label }}</button>
 {% else %}
-{# 不在主表單內時（列表頁、狀態操作區），維持自成一體的寫法。 #}
+{# 不在主表單內時（列表頁、狀態操作區），維持自成一體的寫法。
+   csrf_token 的 id 由 action 推導，避免一頁多個表單時
+   出現重複的 id="csrf_token"（理由見 confirm_form_target）。 #}
+{% set token_id = 'csrf-' ~ (action | replace('/', '-') | replace('.', '-') | trim('-')) %}
 <form class="inline-form" method="post" action="{{ action }}">
-  {{ form.csrf_token }}
+  {# 理由同 confirm_form_target：CSRF 關閉時此屬性不存在。 #}
+  {% if form.csrf_token is defined %}{{ form.csrf_token(id=token_id) }}{% endif %}
   {% for name, value in extra_fields.items() %}
   <input type="hidden" name="{{ name }}" value="{{ value }}">
   {% endfor %}
@@ -197,10 +201,17 @@ NTUST SiPh Lab - Admin Form Macros
 
   hidden 屬性讓它不佔版面 —— 它只是按鈕的送出目標，
   本身沒有任何可見內容。
+
+  csrf_token 明確指定 id：WTForms 對每個表單的 token 都產生
+  id="csrf_token"，一頁有多個表單時會出現重複 id（實測一頁 4 個），
+  那是無效的 HTML，也會讓 document.getElementById 與
+  螢幕閱讀器的定位變得不可預期。
 #}
 {% macro confirm_form_target(action, form, form_id, extra_fields={}) %}
 <form id="{{ form_id }}" class="inline-form" method="post" action="{{ action }}" hidden>
-  {{ form.csrf_token }}
+  {# csrf_token 在 WTF_CSRF_ENABLED=False 時（測試設定）根本不存在，
+     直接呼叫會拋 UndefinedError 讓整頁 500。 #}
+  {% if form.csrf_token is defined %}{{ form.csrf_token(id=form_id ~ '-csrf') }}{% endif %}
   {% for name, value in extra_fields.items() %}
   <input type="hidden" name="{{ name }}" value="{{ value }}">
   {% endfor %}

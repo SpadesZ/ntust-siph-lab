@@ -115,6 +115,10 @@ logger = logging.getLogger(__name__)
 #: people.slug 欄位長度（VARCHAR(120)），保留後綴空間。
 _SLUG_MAX = 110
 
+#: 排序值留空時回到的預設，與 Person.sort_order 的 model default 一致。
+#: 兩處必須相同，否則「清空後」與「新建時」的排序會不一樣。
+_DEFAULT_SORT_ORDER = 100
+
 
 class PersonServiceError(RuntimeError):
     """業務規則違反；訊息可直接顯示給管理員。"""
@@ -239,13 +243,20 @@ class PersonService:
         if "photo_alt_en" in data:
             person.photo_alt_en = normalize_text(data.get("photo_alt_en"))
 
-        if data.get("sort_order") is not None:
-            try:
-                person.sort_order = int(data["sort_order"])
-            except (TypeError, ValueError):
-                # 保留原值而非拋錯：排序是次要欄位，
-                # 不應該讓整筆儲存失敗。
-                pass
+        if "sort_order" in data:
+            # 留空 -> 回到預設值 100。
+            # 原本的 `is not None` 判斷讓「清空排序值」變成不可能：
+            # 管理者清空欄位後儲存，看到的仍是舊數字，
+            # 只能改成別的數字而無法還原預設。
+            if data["sort_order"] in (None, ""):
+                person.sort_order = _DEFAULT_SORT_ORDER
+            else:
+                try:
+                    person.sort_order = int(data["sort_order"])
+                except (TypeError, ValueError):
+                    # 保留原值而非拋錯：排序是次要欄位，
+                    # 不應該讓整筆儲存失敗。
+                    pass
 
         if "is_featured" in data:
             person.is_featured = bool(data.get("is_featured"))

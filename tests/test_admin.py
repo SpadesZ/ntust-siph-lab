@@ -171,12 +171,16 @@ def test_ac06_graduate_via_http_route(logged_in_client, client, app, sample_pers
     service 層已有測試，但 route 的表單解析、驗證與 redirect
     原本完全沒有被驗證過。
     """
+    # 欄位帶 graduate- 前綴：GraduateForm 與 PersonForm 有同名欄位
+    # （graduation_year / degree / thesis_title_zh）且渲染在同一頁，
+    # 不加前綴會產生重複 id，讓「轉為畢業生」區塊的 label
+    # 指到上方主表單的輸入框（見 forms.GRADUATE_FORM_PREFIX）。
     response = logged_in_client.post(
         f"/admin/people/{sample_person['id']}/graduate",
         data={
-            "graduation_year": "2026",
-            "degree": "M.S.",
-            "thesis_title_zh": "矽光子微環諧振器之光通道效能監視研究",
+            "graduate-graduation_year": "2026",
+            "graduate-degree": "M.S.",
+            "graduate-thesis_title_zh": "矽光子微環諧振器之光通道效能監視研究",
         },
     )
     assert response.status_code == 302, "graduate route 應以 PRG 導回"
@@ -206,7 +210,7 @@ def test_ac06_graduate_via_http_route(logged_in_client, client, app, sample_pers
 def test_graduate_missing_year_keeps_status(app, logged_in_client, sample_person):
     """缺畢業年度時不得變更狀態（驗證失敗必須是原子的）。"""
     logged_in_client.post(
-        f"/admin/people/{sample_person['id']}/graduate", data={"degree": "M.S."}
+        f"/admin/people/{sample_person['id']}/graduate", data={"graduate-degree": "M.S."}
     )
 
     from app.extensions import db

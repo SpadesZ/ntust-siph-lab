@@ -123,6 +123,7 @@ from app.services.publish_validator import PublishValidator
 from app.services.research_service import ResearchService, ResearchServiceError
 from app.services.settings_service import SettingsService, SettingsServiceError
 from app.blueprints.admin.forms import (
+    GRADUATE_FORM_PREFIX,
     ChangePasswordForm,
     ConfirmForm,
     GraduateForm,
@@ -328,7 +329,7 @@ def person_edit(person_id: int):
                 form=form,
                 person=person,
                 validation=PublishValidator.validate_person(person),
-                graduate_form=GraduateForm(),
+                graduate_form=GraduateForm(prefix=GRADUATE_FORM_PREFIX),
                 confirm_form=ConfirmForm(),
             )
 
@@ -359,7 +360,7 @@ def person_edit(person_id: int):
         form=form,
         person=person,
         validation=PublishValidator.validate_person(person),
-        graduate_form=GraduateForm(),
+        graduate_form=GraduateForm(prefix=GRADUATE_FORM_PREFIX),
         confirm_form=ConfirmForm(),
     )
 
@@ -445,7 +446,7 @@ def person_graduate(person_id: int):
     if person is None:
         abort(404)
 
-    form = GraduateForm()
+    form = GraduateForm(prefix=GRADUATE_FORM_PREFIX)
     if not form.validate_on_submit():
         for field_errors in form.errors.values():
             for message in field_errors:
