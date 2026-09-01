@@ -29,7 +29,6 @@ NTUST SiPh Lab - Admin Form Macros
 巨集清單：
   field(f, ...)        - 一般輸入（text/number/select/textarea/file）
   checkbox(f, ...)     - 核取方塊
-  multiselect(f, ...)  - 多選清單
   status_badge(status) - 發布狀態徽章
   confirm_button(...)  - 帶 CSRF 的單一動作 POST 表單
 
@@ -96,21 +95,6 @@ NTUST SiPh Lab - Admin Form Macros
     {{ f(**{'aria-describedby': f.id ~ '-hint'} if f.description else {}) }}
     {{ f.label }}
   </div>
-  {% if f.description %}
-  <p class="form-field__hint" id="{{ f.id }}-hint">{{ f.description }}</p>
-  {% endif %}
-  {% if f.errors %}
-  <p class="form-field__error" role="alert">{{ f.errors | join('；') }}</p>
-  {% endif %}
-</div>
-{% endmacro %}
-
-
-{# 多選清單（成果的關聯成員）。 #}
-{% macro multiselect(f, size=8, full=true) %}
-<div class="form-field {% if full %}form-field--full{% endif %} {% if f.errors %}form-field--has-error{% endif %}">
-  {{ f.label(class='form-field__label') }}
-  {{ f(class='select', size=size, **{'aria-describedby': f.id ~ '-hint'} if f.description else {}) }}
   {% if f.description %}
   <p class="form-field__hint" id="{{ f.id }}-hint">{{ f.description }}</p>
   {% endif %}

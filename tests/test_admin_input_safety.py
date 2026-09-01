@@ -154,7 +154,6 @@ def test_publication_date_form_rejects_impossible_date(app, bad_date):
         data={"output_type": "journal", "year": "2025", "publication_date": bad_date},
     ):
         form = ResearchForm()
-        form.people.choices = []
         assert not form.validate(), f"{bad_date} 不該通過驗證"
         assert form.publication_date.errors, "錯誤必須掛在 publication_date 欄位上"
 
@@ -168,7 +167,6 @@ def test_publication_date_accepts_valid_iso_date(app):
         data={"output_type": "journal", "year": "2025", "publication_date": "2025-03-14"},
     ):
         form = ResearchForm()
-        form.people.choices = []
         assert form.validate(), f"合法日期不該被擋：{form.errors}"
 
 

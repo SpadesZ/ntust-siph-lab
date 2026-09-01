@@ -93,7 +93,6 @@ from wtforms import (
     IntegerField,
     PasswordField,
     SelectField,
-    SelectMultipleField,
     StringField,
     SubmitField,
     TextAreaField,
@@ -515,12 +514,9 @@ class ResearchForm(AdminForm):
     )
 
     # --- People & keywords ---
-    people = SelectMultipleField(
-        "關聯 Lab 成員",
-        coerce=int,
-        validators=[Optional()],
-        description="按住 Ctrl/Cmd 可多選；選取順序不影響，作者順序依清單順序。",
-    )
+    #
+    # 關聯成員不再使用 SelectMultipleField（見 parse_author_orders）。
+    # 由 route 解析 author_order-<person_id> 後注入 to_dict 的結果。
     keywords = StringField(
         "研究關鍵字", validators=[Optional()], description="以逗號分隔，中英文皆可。"
     )
@@ -567,16 +563,77 @@ class ResearchForm(AdminForm):
             "github_url": self.github_url.data,
             "dataset_url": self.dataset_url.data,
             "authors_display_text": self.authors_display_text.data,
-            "people": [
-                {"person_id": pid, "role": ContributorRole.AUTHOR}
-                for pid in (self.people.data or [])
-            ],
+            # people 不在此產生：作者順序由 route 以
+            # parse_author_orders() 解析後注入（見該方法的說明）。
             "keywords": self.keywords.data,
             "hero_image_alt_zh": self.hero_image_alt_zh.data,
             "seo_title_zh": self.seo_title_zh.data,
             "seo_description_zh": self.seo_description_zh.data,
             "sort_order": self.sort_order.data,
         }
+
+    @staticmethod
+    def parse_author_orders(form_data, valid_person_ids) -> tuple[list[dict], list[str]]:
+        """解析每位成員的作者順序輸入。
+
+        表單命名為 `author_order-<person_id>`：留空代表不列入，
+        填數字代表列入並以該數字排序（1 = 第一作者）。
+
+        為什麼不用 SelectMultipleField（原本的做法）：
+          多選清單送出的順序是「選項在 DOM 中的順序」，也就是
+          _person_choices() 的排列（人物的 sort_order），
+          與管理者點選的順序無關。而 sync_people 以清單順序
+          寫入 sort_order，前台的 public_lab_people 又照它顯示 ——
+          結果是「論文的作者順序 = 這些人在成員頁的排序值」，
+          且在成果頁完全無法調整。對學術網站來說，
+          第一作者與通訊作者的順序是不能錯的。
+
+        為什麼以 person_id 為 key 而非依索引對齊：
+          parse_repeated 那種依索引對齊的做法有個隱性前提 ——
+          每一列的每個欄位都必須送出。以 id 為 key 完全不受
+          「某個輸入沒送出」影響，不會發生 A 的順序配到 B 身上。
+
+        Returns:
+            (entries, errors)
+            entries 已依順序排好，可直接交給 ResearchService.sync_people。
+        """
+        entries: list[dict] = []
+        errors: list[str] = []
+
+        for person_id in valid_person_ids:
+            raw = (form_data.get(f"author_order-{person_id}") or "").strip()
+            if not raw:
+                continue  # 留空 = 不列入這筆成果
+
+            try:
+                order = int(raw)
+            except ValueError:
+                errors.append(f"成員順序「{raw}」不是數字，請填 1 以上的整數。")
+                continue
+
+            if order < 1:
+                errors.append(f"成員順序「{raw}」必須是 1 以上的整數。")
+                continue
+
+            entries.append(
+                {
+                    "person_id": person_id,
+                    "role": ContributorRole.AUTHOR,
+                    "author_order": order,
+                }
+            )
+
+        # 相同順序值時以 person_id 決定先後，確保結果穩定可預期。
+        entries.sort(key=lambda e: (e["author_order"], e["person_id"]))
+
+        orders = [e["author_order"] for e in entries]
+        if len(set(orders)) != len(orders):
+            errors.append(
+                "有多位成員填了相同的順序值，系統已依成員編號決定先後；"
+                "建議改為不重複的數字以免順序不如預期。"
+            )
+
+        return entries, errors
 
     def load_from(self, output) -> None:
         """把既有成果資料填入表單（編輯頁 GET）。"""
@@ -600,7 +657,7 @@ class ResearchForm(AdminForm):
         self.github_url.data = output.github_url
         self.dataset_url.data = output.dataset_url
         self.authors_display_text.data = output.authors_display_text
-        self.people.data = [link.person_id for link in output.person_links]
+        # 作者順序不經由 form 欄位，由 template 直接讀 output.person_links。
         self.keywords.data = ", ".join(output.keywords)
         self.hero_image_alt_zh.data = output.hero_image_alt_zh
         self.seo_title_zh.data = output.seo_title_zh
