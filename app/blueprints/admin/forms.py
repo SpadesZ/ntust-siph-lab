@@ -150,6 +150,34 @@ class SafeEmail:
             raise ValidationError(self.message)
 
 
+class IsoDate:
+    """日期必須是實際存在的 YYYY-MM-DD（SAI §8.4 publication_date）。
+
+    為什麼需要：
+      publication_date 在表單層原本只有 Length(max=10)，
+      `2025-13-45`、`abcdefghij` 都會通過，然後在
+      ResearchService._parse_publication_date 被靜默轉成 None ——
+      管理者看到欄位變空白，卻沒有任何錯誤訊息，
+      與 SafeUrl docstring 描述的是同一種缺陷。
+
+      年份錯誤在學術網站的代價很高（引用資訊會錯），
+      因此寧可擋下來要求更正，也不要默默丟掉。
+    """
+
+    def __init__(self, message: str | None = None) -> None:
+        self.message = message or "日期格式須為 YYYY-MM-DD，且必須是實際存在的日期。"
+
+    def __call__(self, form, field) -> None:
+        if not field.data:
+            return
+        from datetime import date as _date
+
+        try:
+            _date.fromisoformat(str(field.data).strip())
+        except ValueError as exc:
+            raise ValidationError(self.message) from exc
+
+
 class NormalisableDoi:
     """DOI 必須可被正規化為裸 DOI（SAI §15.2「DOI 格式 normalization」）。
 
@@ -415,8 +443,9 @@ class ResearchForm(FlaskForm):
     )
     publication_date = StringField(
         "出版日期",
-        validators=[Optional(), Length(max=10)],
+        validators=[Optional(), Length(max=10), IsoDate()],
         description="格式 YYYY-MM-DD，有正式日期時填寫。",
+        render_kw={"placeholder": "2025-03-14"},
     )
     title_zh = TextAreaField("標題（中）", validators=[Optional()])
     title_en = TextAreaField("標題（英）", validators=[Optional()])
@@ -601,14 +630,25 @@ class SiteSettingForm(FlaskForm):
     about_methods_zh = TextAreaField("研究方法與設備概覽", validators=[Optional()])
 
     # --- Join & Contact ---
-    contact_email = StringField("聯絡 Email", validators=[Optional(), Length(max=200)])
+    #: 這些欄位在 service 層都會經過 normalize_email / normalize_url，
+    #: 非法值會被轉成 None 而「覆寫掉原本正確的資料」。
+    #: 因此表單層必須先擋下來（理由同 SafeUrl 的 docstring）——
+    #: 少了 SafeEmail，打錯一個字就會把研究室對外的聯絡信箱清空，
+    #: 而畫面仍顯示「已更新網站設定」。
+    contact_email = StringField(
+        "聯絡 Email",
+        validators=[Optional(), Length(max=200), SafeEmail()],
+        render_kw={"type": "email"},
+    )
     address_zh = TextAreaField("地址（中）", validators=[Optional()])
     address_en = TextAreaField("地址（英）", validators=[Optional()])
-    map_url = StringField("地圖連結", validators=[Optional(), Length(max=500)])
+    map_url = StringField("地圖連結", validators=[Optional(), Length(max=500), SafeUrl()])
     join_title_zh = StringField("招募標題", validators=[Optional(), Length(max=200)])
     join_body_zh = TextAreaField("招募內容", validators=[Optional()])
     join_cta_label_zh = StringField("招募按鈕文字", validators=[Optional(), Length(max=120)])
-    join_cta_url = StringField("招募按鈕連結", validators=[Optional(), Length(max=500)])
+    join_cta_url = StringField(
+        "招募按鈕連結", validators=[Optional(), Length(max=500), SafeUrl()]
+    )
 
     # --- SEO defaults ---
     default_title_suffix = StringField(
@@ -624,13 +664,13 @@ class SiteSettingForm(FlaskForm):
         render_kw={"accept": _IMAGE_ACCEPT},
     )
     production_base_url = StringField(
-        "正式網域紀錄", validators=[Optional(), Length(max=255)],
+        "正式網域紀錄", validators=[Optional(), Length(max=255), SafeUrl()],
         description="僅供紀錄；實際 canonical 由伺服器環境變數 PUBLIC_BASE_URL 決定。",
     )
 
     # --- External identity ---
     official_ntust_url = StringField(
-        "NTUST 官方頁連結", validators=[Optional(), Length(max=500)]
+        "NTUST 官方頁連結", validators=[Optional(), Length(max=500), SafeUrl()]
     )
 
     # --- Advanced ---
