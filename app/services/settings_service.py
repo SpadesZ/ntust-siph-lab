@@ -138,14 +138,19 @@ class SettingsService:
         setattr(setting, field, value)
 
     @staticmethod
-    def _assign_fields(setting: SiteSetting, data: dict) -> None:
+    def _assign_fields(setting: SiteSetting, data: dict) -> list[str]:
         """把表單資料寫入設定欄位（逐 tab 對應 SAI §15.4）。
+
+        Returns:
+            notices —— 已儲存，但有事情必須告知使用者
+            （例如某一列因缺必要欄位而未被寫入）。
 
         Raises:
             SettingsServiceError: 有欄位「非空但格式不合法」。
                 寧可整筆拒絕也不要靜默覆寫既有正確資料。
         """
         errors: list[str] = []
+        notices: list[str] = []
 
         # --- Lab Identity ---
         lab_name_zh = normalize_text(data.get("lab_name_zh"))
@@ -169,12 +174,22 @@ class SettingsService:
         setting.hero_media_alt_zh = normalize_text(data.get("hero_media_alt_zh"))
 
         # 結構化區塊：由 route 解析為 list[dict] 後傳入。
+        # 被略過的列會產生 notice，讓使用者知道「哪一列、為什麼沒存」。
         if "research_focus" in data:
-            setting.research_focus = SettingsService._clean_focus(data.get("research_focus"))
+            setting.research_focus, focus_notes = SettingsService._clean_focus(
+                data.get("research_focus")
+            )
+            notices.extend(focus_notes)
         if "lab_proof" in data:
-            setting.lab_proof = SettingsService._clean_proof(data.get("lab_proof"))
+            setting.lab_proof, proof_notes = SettingsService._clean_proof(
+                data.get("lab_proof")
+            )
+            notices.extend(proof_notes)
         if "social_links" in data:
-            setting.social_links = SettingsService._clean_links(data.get("social_links"))
+            setting.social_links, link_notes = SettingsService._clean_links(
+                data.get("social_links")
+            )
+            notices.extend(link_notes)
 
         # --- About ---
         setting.about_intro_zh = normalize_multiline(data.get("about_intro_zh"))
@@ -218,81 +233,154 @@ class SettingsService:
         if errors:
             raise SettingsServiceError(" ".join(errors))
 
+        return notices
+
+    #: 多值列的清理結果。
+    #:
+    #: 為什麼要回報而非靜默丟棄：
+    #:   原本三個 _clean_* 都是「不合格就 continue」，整列直接消失。
+    #:   管理者填了「顯示名稱」卻忘了填網址、或網址打錯，
+    #:   存檔後只看到那一列變空白，系統還回報「已更新網站設定」。
+    #:   這與 forms.SafeUrl docstring 指出的是同一種缺陷 ——
+    #:   當時只修了有宣告 validator 的欄位，多值列走
+    #:   parse_repeated 完全繞過驗證，因此漏掉。
+    #:
+    #: 「整列皆空」仍然靜默略過：那是畫面上刻意保留的空白列，
+    #: 不是使用者的錯誤。
     @staticmethod
-    def _clean_focus(items) -> list[dict]:
+    def _clean_focus(items) -> tuple[list[dict], list[str]]:
         """清理首頁研究主題清單。
 
         description 允許為空 —— 母站僅提供六項專長名稱，
         依 SAI §2.3 不得由 Agent 補寫定義（見 site_setting.py）。
+
+        Returns:
+            (清理後清單, 需要回報給使用者的訊息)
         """
         cleaned: list[dict] = []
-        for item in items or []:
+        notices: list[str] = []
+
+        for index, item in enumerate(items or [], start=1):
             if not isinstance(item, dict):
                 continue
+
             title_zh = normalize_text(item.get("title_zh"))
+            title_en = normalize_text(item.get("title_en"))
+            description = normalize_multiline(item.get("description_zh"))
+
             if not title_zh:
-                continue  # 沒有標題的項目無意義，直接略過
+                if title_en or description:
+                    notices.append(
+                        f"研究方向第 {index} 列缺少「主題名稱（中）」，該列未儲存。"
+                    )
+                continue
+
             cleaned.append(
                 {
                     "title_zh": title_zh,
-                    "title_en": normalize_text(item.get("title_en")) or "",
-                    "description_zh": normalize_multiline(item.get("description_zh")) or "",
+                    "title_en": title_en or "",
+                    "description_zh": description or "",
                 }
             )
-        return cleaned
+        return cleaned, notices
 
     @staticmethod
-    def _clean_proof(items) -> list[dict]:
+    def _clean_proof(items) -> tuple[list[dict], list[str]]:
         """清理首頁可驗證事實清單（SAI §6.3 禁止虛構數據）。"""
         cleaned: list[dict] = []
-        for item in items or []:
+        notices: list[str] = []
+
+        for index, item in enumerate(items or [], start=1):
             if not isinstance(item, dict):
                 continue
+
             label = normalize_text(item.get("label_zh"))
             value = normalize_text(item.get("value_zh"))
+            raw_source = normalize_text(item.get("source"))
+
             if not label or not value:
+                if label or value or raw_source:
+                    missing = "項目名稱" if not label else "內容"
+                    notices.append(
+                        f"研究室事實第 {index} 列缺少「{missing}」，該列未儲存。"
+                    )
                 continue
+
+            source = normalize_url(raw_source) if raw_source else None
+            if raw_source and source is None:
+                notices.append(
+                    f"研究室事實第 {index} 列的來源網址格式不正確（{raw_source}），"
+                    "該列已儲存但來源留空。"
+                )
+
             cleaned.append(
-                {
-                    "label_zh": label,
-                    "value_zh": value,
-                    "source": normalize_url(item.get("source")) or "",
-                }
+                {"label_zh": label, "value_zh": value, "source": source or ""}
             )
-        return cleaned
+        return cleaned, notices
 
     @staticmethod
-    def _clean_links(items) -> list[dict]:
+    def _clean_links(items) -> tuple[list[dict], list[str]]:
         """清理外部連結清單（footer 與 Organization.sameAs 共用）。"""
         cleaned: list[dict] = []
-        for item in items or []:
+        notices: list[str] = []
+
+        for index, item in enumerate(items or [], start=1):
             if not isinstance(item, dict):
                 continue
-            url = normalize_url(item.get("url"))
-            if not url:
+
+            label = normalize_text(item.get("label"))
+            raw_url = normalize_text(item.get("url"))
+
+            if not raw_url:
+                if label:
+                    notices.append(
+                        f"外部連結第 {index} 列填了顯示名稱「{label}」但沒有網址，該列未儲存。"
+                    )
                 continue
-            cleaned.append(
-                {"label": normalize_text(item.get("label")) or url, "url": url}
-            )
-        return cleaned
+
+            url = normalize_url(raw_url)
+            if not url:
+                notices.append(
+                    f"外部連結第 {index} 列的網址格式不正確（{raw_url}），該列未儲存。"
+                )
+                continue
+
+            cleaned.append({"label": label or url, "url": url})
+        return cleaned, notices
 
     # ------------------------------------------------------------------
     # 公開介面
     # ------------------------------------------------------------------
     @staticmethod
     def update(
-        data: dict, admin_user_id: int | None = None, ip_address: str | None = None
+        data: dict,
+        admin_user_id: int | None = None,
+        ip_address: str | None = None,
+        notices: list[str] | None = None,
     ) -> SiteSetting:
-        """更新全站設定。"""
+        """更新全站設定。
+
+        Args:
+            notices: 若傳入 list，會把「已儲存但需要告知使用者的事」
+                附加進去 —— 例如某一列因缺必要欄位而未被寫入。
+
+                用 out-parameter 而不是改變回傳型別，是因為
+                seed script 與既有測試都以 `setting = update(...)`
+                的形式呼叫；改回傳 tuple 會波及十餘個呼叫點，
+                而它們並不需要這些訊息。
+        """
         setting = SiteSetting.get()
 
         try:
-            SettingsService._assign_fields(setting, data)
+            collected = SettingsService._assign_fields(setting, data)
         except SettingsServiceError:
             # _assign_fields 在發現問題前可能已寫入部分欄位；
             # rollback 確保「整筆拒絕」而不是留下半套狀態。
             db.session.rollback()
             raise
+
+        if notices is not None:
+            notices.extend(collected)
 
         AuditLog.write(
             action=AuditAction.UPDATE,
