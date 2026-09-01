@@ -513,23 +513,32 @@ def alumni_list():
 # ----------------------------------------------------------------------
 # 研究成果
 # ----------------------------------------------------------------------
-def _person_choices() -> list[tuple[int, str]]:
-    """成果表單的人物多選選項。
+def _author_rows(output=None) -> list[dict]:
+    """成果表單的「關聯成員 + 作者順序」清單。
 
     包含所有狀態的人物（含 draft），因為成果可能在人物尚未
     發布時就先建立關聯 —— 前台會自動過濾未發布者
     （見 ResearchOutput.public_lab_people）。
+
+    order 的來源：
+      POST 後重新渲染 -> 使用者剛填的值（避免驗證失敗時被還原）
+      GET             -> 既有關聯的順序（1 起算）
     """
-    people = people_repo.admin_list()
-    return [
-        (
-            person.id,
-            f"{person.name_zh}"
-            f"{f'（{person.name_en}）' if person.name_en else ''}"
-            f" - {person.status}",
-        )
-        for person in people
-    ]
+    existing: dict[int, int] = {}
+    if output is not None:
+        existing = {
+            link.person_id: index
+            for index, link in enumerate(output.person_links, start=1)
+        }
+
+    rows = []
+    for person in people_repo.admin_list():
+        if request.method == "POST":
+            order = (request.form.get(f"author_order-{person.id}") or "").strip()
+        else:
+            order = str(existing[person.id]) if person.id in existing else ""
+        rows.append({"person": person, "order": order})
+    return rows
 
 
 def _handle_research_image(output: ResearchOutput, form: ResearchForm) -> None:
@@ -575,21 +584,38 @@ def research_list():
     )
 
 
+def _research_payload(form: ResearchForm) -> dict:
+    """表單資料 + 由 request.form 解析出的作者順序。
+
+    作者順序不經由 WTForms 欄位（見 ResearchForm.parse_author_orders），
+    因此必須在這裡合併進去，否則 sync_people 收不到關聯成員。
+    """
+    data = form.to_dict()
+    valid_ids = [person.id for person in people_repo.admin_list()]
+    entries, order_errors = ResearchForm.parse_author_orders(request.form, valid_ids)
+    data["people"] = entries
+    for message in order_errors:
+        flash(message, "warning")
+    return data
+
+
 @admin_bp.route("/research/new", methods=["GET", "POST"])
 def research_new():
     """新增研究成果。"""
     form = ResearchForm()
-    form.people.choices = _person_choices()
 
     if form.validate_on_submit():
         admin_id, ip = _actor()
         try:
             output = ResearchService.create(
-                form.to_dict(), admin_user_id=admin_id, ip_address=ip
+                _research_payload(form), admin_user_id=admin_id, ip_address=ip
             )
         except ResearchServiceError as exc:
             flash(str(exc), "error")
-            return render_template("admin/research_form.html", form=form, output=None)
+            return render_template(
+                "admin/research_form.html", form=form, output=None,
+                author_rows=_author_rows(),
+            )
 
         # 理由同 person_new：成果已 commit，主圖失敗不得回到新增表單，
         # 否則重送會建立重複成果。
@@ -606,7 +632,9 @@ def research_new():
         flash(f"已建立「{output.display_title}」（草稿）。", "success")
         return redirect(url_for("admin.research_edit", output_id=output.id))
 
-    return render_template("admin/research_form.html", form=form, output=None)
+    return render_template(
+        "admin/research_form.html", form=form, output=None, author_rows=_author_rows()
+    )
 
 
 @admin_bp.route("/research/<int:output_id>/edit", methods=["GET", "POST"])
@@ -617,7 +645,6 @@ def research_edit(output_id: int):
         abort(404)
 
     form = ResearchForm()
-    form.people.choices = _person_choices()
 
     if form.validate_on_submit():
         admin_id, ip = _actor()
@@ -628,13 +655,14 @@ def research_edit(output_id: int):
                 "admin/research_form.html",
                 form=form,
                 output=output,
+                author_rows=_author_rows(output),
                 validation=PublishValidator.validate_research(output),
                 confirm_form=ConfirmForm(),
             )
 
         try:
             ResearchService.update(
-                output, form.to_dict(), admin_user_id=admin_id, ip_address=ip
+                output, _research_payload(form), admin_user_id=admin_id, ip_address=ip
             )
         except ResearchServiceError as exc:
             return _rerender(str(exc))
@@ -658,6 +686,7 @@ def research_edit(output_id: int):
         "admin/research_form.html",
         form=form,
         output=output,
+        author_rows=_author_rows(output),
         validation=PublishValidator.validate_research(output),
         confirm_form=ConfirmForm(),
     )

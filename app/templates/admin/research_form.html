@@ -34,7 +34,7 @@ NTUST SiPh Lab - Admin Research Form (新增/編輯)
 ============================================================
 #}
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import field, checkbox, multiselect, status_badge, confirm_button, confirm_form_target, validation_panel %}
+{% from "admin/_macros.html" import field, checkbox, status_badge, confirm_button, confirm_form_target, validation_panel %}
 
 {% block page_title %}{{ '編輯成果：' ~ output.display_title if output else '新增研究成果' }}{% endblock %}
 
@@ -140,10 +140,53 @@ NTUST SiPh Lab - Admin Research Form (新增/編輯)
   <fieldset class="form-section">
     <legend class="form-section__legend">關聯成員與關鍵字</legend>
     <p class="form-section__hint">
-      關聯研究室成員後，成果頁與個人頁之間會建立雙向連結。
+      在要列入的成員後面填上順序：<strong>1 是第一作者</strong>，
+      依序 2、3……；<strong>留空代表不列入這筆成果</strong>。
+      這個順序就是前台成果頁顯示的作者順序。
       非研究室的共同作者請填在上方的「完整作者列」，不需要建立成員資料。
     </p>
-    {{ multiselect(form.people) }}
+
+    {# 以 person_id 為 name 的一部分（author_order-<id>），
+       而非依索引對齊 —— 後者只要有一個輸入沒送出就會整組錯位，
+       把 A 的順序配到 B 身上（見 forms.py::parse_author_orders）。 #}
+    <div class="table-wrap">
+      <table class="data-table">
+        <caption class="sr-only">關聯成員與作者順序</caption>
+        <thead>
+          <tr>
+            <th scope="col">順序</th>
+            <th scope="col">成員</th>
+            <th scope="col">身分</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set status_labels = {'faculty': '教授', 'current': '在學研究生', 'alumni': '畢業生'} %}
+          {% for row in author_rows %}
+          <tr>
+            <td>
+              <label class="sr-only" for="author-order-{{ row.person.id }}">
+                {{ row.person.name_zh }} 的作者順序
+              </label>
+              <input class="input" type="number" min="1" step="1"
+                     style="width: 6rem;"
+                     id="author-order-{{ row.person.id }}"
+                     name="author_order-{{ row.person.id }}"
+                     value="{{ row.order }}"
+                     placeholder="—">
+            </td>
+            <td>
+              {{ row.person.name_zh }}
+              {% if row.person.name_en %}
+              <span class="data-table__sub">{{ row.person.name_en }}</span>
+              {% endif %}
+            </td>
+            <td>{{ status_labels.get(row.person.status, row.person.status) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
     <div class="form-grid" style="margin-top: var(--space-5);">
       {{ field(form.keywords, full=true) }}
     </div>
