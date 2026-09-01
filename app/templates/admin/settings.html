@@ -40,7 +40,7 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
 ============================================================
 #}
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import field, checkbox, confirm_button %}
+{% from "admin/_macros.html" import field, checkbox, confirm_button, confirm_form_target %}
 
 {% block page_title %}網站設定{% endblock %}
 
@@ -82,7 +82,8 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
           <div style="margin-top: var(--space-3);">
             {{ confirm_button(
                 url_for('admin.settings_media_delete', field='logo_path'),
-                '移除 Logo', confirm_form, 'btn btn--danger btn--small') }}
+                '移除 Logo', confirm_form, 'btn btn--danger btn--small',
+                form_id='form-logo-delete') }}
           </div>
         </div>
       </div>
@@ -115,7 +116,8 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
           <div style="margin-top: var(--space-3);">
             {{ confirm_button(
                 url_for('admin.settings_media_delete', field='hero_media_path'),
-                '移除主視覺', confirm_form, 'btn btn--danger btn--small') }}
+                '移除主視覺', confirm_form, 'btn btn--danger btn--small',
+                form_id='form-hero-delete') }}
           </div>
         </div>
       </div>
@@ -290,7 +292,8 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
           <div style="margin-top: var(--space-3);">
             {{ confirm_button(
                 url_for('admin.settings_media_delete', field='og_image_path'),
-                '移除分享圖', confirm_form, 'btn btn--danger btn--small') }}
+                '移除分享圖', confirm_form, 'btn btn--danger btn--small',
+                form_id='form-og-delete') }}
           </div>
         </div>
       </div>
@@ -324,5 +327,24 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
     </span>
   </div>
 </form>
+
+{# ---------- 主表單之外的動作表單 ----------
+   必須放在 </form> 之後：<form> 不能巢狀，否則會提前關閉主表單
+   並讓「儲存設定」失效（見 _macros.html 的說明）。 #}
+{% if setting.logo_path %}
+{{ confirm_form_target(
+    url_for('admin.settings_media_delete', field='logo_path'),
+    confirm_form, 'form-logo-delete') }}
+{% endif %}
+{% if setting.hero_media_path %}
+{{ confirm_form_target(
+    url_for('admin.settings_media_delete', field='hero_media_path'),
+    confirm_form, 'form-hero-delete') }}
+{% endif %}
+{% if setting.og_image_path %}
+{{ confirm_form_target(
+    url_for('admin.settings_media_delete', field='og_image_path'),
+    confirm_form, 'form-og-delete') }}
+{% endif %}
 
 {% endblock %}

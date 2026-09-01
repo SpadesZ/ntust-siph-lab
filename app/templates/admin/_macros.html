@@ -139,24 +139,84 @@ NTUST SiPh Lab - Admin Form Macros
     label  - 按鈕文字
     form   - ConfirmForm 實例（提供 CSRF token）
     css    - 按鈕樣式
-    confirm- 若提供，瀏覽器原生 confirm 對話框的訊息
 
   為什麼用 POST 而非連結：
     這些都是 state-changing 操作，必須有 CSRF token
     （SAI §11.1）。GET 連結可被第三方以 <img> 觸發。
 
-  confirm 使用 HTML 的 formnovalidate 無關；
   這裡刻意不使用 JS confirm() —— CSP 禁止 inline script，
   且 SAI §7.5/§7.6 的「確認」是以獨立表單或說明文字達成，
   不依賴瀏覽器對話框。
+
+  ★ 為什麼按鈕與 <form> 是分開的兩個巨集：
+    這個巨集常被放在 person_form / research_form / settings
+    的「圖片預覽」區塊裡，而那些區塊位於主表單 admin-form 之內。
+    HTML 不允許 <form> 巢狀：瀏覽器會丟棄內層的 <form> 開始標籤，
+    但照常執行 </form> 結束標籤 —— 結果是主表單被提前關閉。
+
+    實測後果（見 tests/test_admin_form_integrity.py）：
+      1. 「儲存變更」按鈕落在主表單外而失去 form owner，
+         依 HTML 規範點擊時「什麼都不會發生」。
+      2. 移除按鈕被主表單吸收，POST 到編輯端點而非刪除端點。
+      3. 排在圖片區塊之後的欄位（SEO、排序、精選）不會被送出。
+
+    因此改用 HTML5 的 form 屬性：按鈕留在版面原位，
+    但以 form="id" 指向一個放在主表單「之外」的表單。
+    視覺完全不變，巢狀問題根除。
+
+  使用方式（兩個巨集必須成對出現，form_id 要一致）：
+
+    在版面原位放按鈕：
+      confirm_button(url, '移除照片', confirm_form,
+                     'btn btn--danger', form_id='del-photo')
+
+    在主表單的 </form> 之後放送出目標：
+      confirm_form_target(url, confirm_form, 'del-photo')
+
+  上面刻意不用 Jinja 的變數／註解語法示範 —— Jinja 註解不可巢狀，
+  在 {# #} 區塊裡再寫一組 {# #} 會提前關閉外層註解，
+  使範例變成真正執行的程式碼並在載入時就報 undefined。
+
+  不指定 form_id 時（列表頁、主表單外的狀態操作區）維持原本
+  自成一體的寫法，呼叫端不需要改動。
 #}
-{% macro confirm_button(action, label, form, css='btn btn--secondary btn--small', extra_fields={}) %}
+{% macro confirm_button(action, label, form, css='btn btn--secondary btn--small', extra_fields={}, form_id=none) %}
+{% if form_id %}
+{# 在主表單內：只輸出按鈕，送出目標由 confirm_form_target 提供。
+   extra_fields 一併交給該巨集，不在這裡輸出（hidden input
+   若留在主表單內，會被主表單的送出一起帶上）。 #}
+<button class="{{ css }}" type="submit" form="{{ form_id }}">{{ label }}</button>
+{% else %}
+{# 不在主表單內時（列表頁、狀態操作區），維持自成一體的寫法。 #}
 <form class="inline-form" method="post" action="{{ action }}">
   {{ form.csrf_token }}
   {% for name, value in extra_fields.items() %}
   <input type="hidden" name="{{ name }}" value="{{ value }}">
   {% endfor %}
   <button class="{{ css }}" type="submit">{{ label }}</button>
+</form>
+{% endif %}
+{% endmacro %}
+
+
+{#
+  confirm_button 的目標表單。必須輸出在主表單 <form> 之外。
+
+  參數：
+    action       - 目標 URL（要與對應的 confirm_button 相同）
+    form         - ConfirmForm 實例（提供 CSRF token）
+    form_id      - 與 confirm_button 的 form_id 一致
+    extra_fields - 額外的 hidden 欄位（例如精選狀態的 featured=1）
+
+  hidden 屬性讓它不佔版面 —— 它只是按鈕的送出目標，
+  本身沒有任何可見內容。
+#}
+{% macro confirm_form_target(action, form, form_id, extra_fields={}) %}
+<form id="{{ form_id }}" class="inline-form" method="post" action="{{ action }}" hidden>
+  {{ form.csrf_token }}
+  {% for name, value in extra_fields.items() %}
+  <input type="hidden" name="{{ name }}" value="{{ value }}">
+  {% endfor %}
 </form>
 {% endmacro %}
 
