@@ -220,6 +220,36 @@ NTUST SiPh Lab - Admin Form Macros
 
 
 {#
+  發布狀態快速篩選列（含筆數）。
+
+  參數：
+    endpoint - 目標 route（admin.people_list / admin.research_list）
+    counts   - {'published': n, 'draft': n, 'archived': n}
+    active   - 目前選取的 publish_status（None = 全部）
+    extra    - 要一併保留的其他 query 參數（篩選狀態不該被清掉）
+
+  為什麼需要：
+    封存後的項目在列表預設不顯示，而側選單沒有「已封存」入口 ——
+    實測時封存一筆資料後，第一直覺是「資料不見了」。
+    篩選功能本來就支援 publish_status=archived，缺的只是可見的入口。
+    順帶顯示筆數，讓管理者一眼看出有沒有被遺忘的草稿。
+#}
+{% macro status_filter_bar(endpoint, counts, active, extra={}) %}
+{% set total = counts.get('published', 0) + counts.get('draft', 0) + counts.get('archived', 0) %}
+<nav class="filter-chips" aria-label="發布狀態快速篩選">
+  <a class="btn btn--small {{ 'btn--primary' if not active else 'btn--ghost' }}"
+     href="{{ url_for(endpoint, **extra) }}"
+     {% if not active %}aria-current="page"{% endif %}>全部（{{ total }}）</a>
+  {% for value, label in [('published', '已發布'), ('draft', '草稿'), ('archived', '已封存')] %}
+  <a class="btn btn--small {{ 'btn--primary' if active == value else 'btn--ghost' }}"
+     href="{{ url_for(endpoint, publish_status=value, **extra) }}"
+     {% if active == value %}aria-current="page"{% endif %}>{{ label }}（{{ counts.get(value, 0) }}）</a>
+  {% endfor %}
+</nav>
+{% endmacro %}
+
+
+{#
   發布驗證結果面板。
   顯示 PublishValidator 的 errors（阻擋）與 warnings（提醒）。
   對應 SAI §7.2「Needs attention：內容品質提醒，不阻擋草稿」。

@@ -50,6 +50,38 @@ NTUST SiPh Lab - Admin Alumni List (/admin/alumni)
 
 {% block content %}
 
+{# ---------- 篩選與搜尋 ----------
+   畢業生會逐年累積，原本這頁沒有任何搜尋或篩選，
+   幾年後就只能靠瀏覽器的 Ctrl+F 找人。 #}
+<form class="filter-bar" method="get" action="{{ url_for('admin.alumni_list') }}"
+      role="search" aria-label="畢業生篩選">
+  <div class="filter-bar__field">
+    <label class="filter-bar__label" for="filter-year">畢業年度</label>
+    <select class="select" id="filter-year" name="year">
+      <option value="">全部年度</option>
+      {% for y in available_years %}
+      <option value="{{ y }}" {% if active_year == y %}selected{% endif %}>{{ y }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="filter-bar__field" style="flex: 1; min-width: 200px;">
+    <label class="filter-bar__label" for="filter-q">搜尋</label>
+    <input class="input" type="search" id="filter-q" name="q"
+           value="{{ active_query or '' }}" placeholder="姓名、slug 或目前單位">
+  </div>
+
+  <div class="filter-bar__field">
+    <button class="btn btn--primary" type="submit">套用</button>
+  </div>
+
+  {% if active_year or active_query %}
+  <div class="filter-bar__field">
+    <a class="btn btn--ghost" href="{{ url_for('admin.alumni_list') }}">清除</a>
+  </div>
+  {% endif %}
+</form>
+
 {% if alumni_groups %}
   {% for year, group in alumni_groups %}
   <section class="admin-panel" aria-labelledby="admin-year-{{ year or 'unspecified' }}">
@@ -115,10 +147,18 @@ NTUST SiPh Lab - Admin Alumni List (/admin/alumni)
 
 {% else %}
 <div class="admin-panel">
+  {% if active_year or active_query %}
+  {# 分辨「沒有資料」與「篩選後沒有結果」——
+     兩者訊息相同的話，使用者會誤以為資料不見了。 #}
+  <p style="color: var(--color-ink-soft);">
+    沒有符合條件的畢業生。<a href="{{ url_for('admin.alumni_list') }}">清除篩選</a>
+  </p>
+  {% else %}
   <p style="color: var(--color-ink-soft);">
     尚無畢業生資料。當在學成員完成學業後，可於該成員的編輯頁使用
     「轉為畢業生」功能，系統會保留其個人網址與所有研究成果關聯。
   </p>
+  {% endif %}
 </div>
 {% endif %}
 
