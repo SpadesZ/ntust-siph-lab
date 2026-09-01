@@ -655,6 +655,49 @@ def research_image_delete(output_id: int):
 # ----------------------------------------------------------------------
 # 網站設定
 # ----------------------------------------------------------------------
+#: 設定頁三個多值區塊的欄位組成。
+#:
+#: 集中成一份定義的理由：route 要用它解析 POST、template 要用它
+#: 重建畫面，兩邊若各寫一份，欄位增減時必然有一邊漏改，
+#: 症狀是「填了但沒存」或「存了但畫面空白」。
+_REPEAT_SPECS: dict[str, list[str]] = {
+    "research_focus": ["title_zh", "title_en", "description_zh"],
+    "lab_proof": ["label_zh", "value_zh", "source"],
+    "social_links": ["label", "url"],
+}
+
+
+def _parse_repeat_blocks() -> dict[str, list[dict]]:
+    """從 request.form 解析三個多值區塊。"""
+    return {
+        prefix: SiteSettingForm.parse_repeated(request.form, keys, prefix)
+        for prefix, keys in _REPEAT_SPECS.items()
+    }
+
+
+def _repeat_context(setting, *, from_form: bool) -> dict[str, list[dict]]:
+    """決定多值區塊要用「使用者剛送出的值」還是「資料庫既有值」。
+
+    為什麼需要這個函式（NOTE 見下）：
+      settings.html 原本一律以 `setting.research_focus` 渲染，
+      也就是永遠讀資料庫。POST 驗證失敗時 WTForms 欄位會保留
+      使用者的輸入，多值區塊卻悄悄還原成資料庫舊值 ——
+      使用者剛打好的研究方向、事實、外部連結全部消失，
+      而畫面上只有一行紅字，沒有任何提示說「你剛剛打的不見了」。
+
+      驗證失敗的觸發點比想像中容易：必填欄位填成空白字元、
+      上傳到一個 .heic 檔（iPhone 預設格式）都會讓
+      validate_on_submit() 回 False。
+
+    Args:
+        from_form: True 時讀 request.form（POST 後重新渲染），
+                   False 時讀資料庫（GET 首次載入）。
+    """
+    if from_form:
+        return _parse_repeat_blocks()
+    return {prefix: getattr(setting, prefix) for prefix in _REPEAT_SPECS}
+
+
 @admin_bp.route("/settings", methods=["GET", "POST"])
 def settings():
     """網站設定（SAI §15.4 六個 tab）。"""
@@ -664,17 +707,7 @@ def settings():
     if form.validate_on_submit():
         admin_id, ip = _actor()
         data = form.to_dict()
-
-        # 多值區塊由 form 的 parse_repeated 解析（見 forms.py 說明）。
-        data["research_focus"] = SiteSettingForm.parse_repeated(
-            request.form, ["title_zh", "title_en", "description_zh"], "research_focus"
-        )
-        data["lab_proof"] = SiteSettingForm.parse_repeated(
-            request.form, ["label_zh", "value_zh", "source"], "lab_proof"
-        )
-        data["social_links"] = SiteSettingForm.parse_repeated(
-            request.form, ["label", "url"], "social_links"
-        )
+        data.update(_parse_repeat_blocks())
 
         try:
             SettingsService.update(data, admin_user_id=admin_id, ip_address=ip)
@@ -704,6 +737,7 @@ def settings():
         "admin/settings.html",
         form=form,
         setting=setting,
+        repeats=_repeat_context(setting, from_form=request.method == "POST"),
         confirm_form=ConfirmForm(),
     )
 

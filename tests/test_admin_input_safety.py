@@ -18,10 +18,11 @@
 #   於是管理者把 Email 打錯一個字，就把研究室對外的聯絡信箱
 #   整個清掉，而畫面仍顯示「已更新網站設定」。
 #
-#   本檔守住的性質：
+#   本檔守住的性質（統一主題：使用者的資料不得無聲消失）：
 #     1. 非空但格式錯誤 -> 不得覆寫既有值
 #     2. 空輸入 -> 仍然可以正常清空（不能為了防呆而不能清空）
 #     3. 表單層要先擋下來，讓使用者看得到欄位級錯誤
+#     4. 驗證失敗重新渲染時 -> 不得把使用者剛填的多值列還原掉
 #
 # 主要 Function：
 #   test_invalid_email_does_not_wipe_existing_contact
@@ -30,6 +31,8 @@
 #   test_contact_email_form_rejects_invalid_address
 #   test_publication_date_form_rejects_impossible_date
 #   test_publication_date_accepts_valid_iso_date
+#   test_validation_failure_preserves_repeat_rows
+#   test_get_settings_shows_stored_repeat_rows
 #
 # 依賴套件：pytest
 #
@@ -163,3 +166,71 @@ def test_publication_date_accepts_valid_iso_date(app):
         form = ResearchForm()
         form.people.choices = []
         assert form.validate(), f"合法日期不該被擋：{form.errors}"
+
+
+# ----------------------------------------------------------------------
+# 3. 驗證失敗重新渲染時，不得丟掉使用者剛填的多值列
+# ----------------------------------------------------------------------
+#: 使用者剛輸入、尚未成功儲存的內容。
+_TYPED_DESCRIPTION = "利用矽基光波導進行環境與生醫訊號的即時感測"
+_TYPED_PROOF_LABEL = "合作單位"
+_TYPED_LINK_LABEL = "研究室 GitHub"
+
+
+def _settings_post_data(*, lab_name_zh: str) -> dict:
+    """組出一份帶有多值列的設定表單資料。"""
+    return {
+        "lab_name_zh": lab_name_zh,
+        "lab_name_en": "Test Lab",
+        "research_focus-title_zh": "光電感測技術",
+        "research_focus-title_en": "Optical Sensing",
+        "research_focus-description_zh": _TYPED_DESCRIPTION,
+        "lab_proof-label_zh": _TYPED_PROOF_LABEL,
+        "lab_proof-value_zh": "中央研究院應用科學研究中心",
+        "lab_proof-source": "",
+        "social_links-label": _TYPED_LINK_LABEL,
+        "social_links-url": "https://github.com/example",
+    }
+
+
+def test_validation_failure_preserves_repeat_rows(logged_in_client):
+    """驗證失敗時，多值欄位的編輯不得被還原成資料庫舊值。
+
+    觸發方式刻意選用「必填欄位填成空白字元」：
+    瀏覽器的 HTML5 required 認為有填而放行，
+    伺服器端 DataRequired 會 strip 後判定失敗 ——
+    這是真實使用者最容易遇到的驗證失敗路徑之一。
+    """
+    response = logged_in_client.post(
+        "/admin/settings",
+        data=_settings_post_data(lab_name_zh="   "),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 200, "驗證失敗應重新渲染表單而非轉址"
+    html = response.get_data(as_text=True)
+
+    for typed in (_TYPED_DESCRIPTION, _TYPED_PROOF_LABEL, _TYPED_LINK_LABEL):
+        assert typed in html, (
+            f"驗證失敗後「{typed}」從畫面上消失了 —— "
+            "使用者剛輸入的多值列被資料庫舊值覆蓋，且沒有任何提示"
+        )
+
+
+def test_get_settings_shows_stored_repeat_rows(logged_in_client, app):
+    """GET 時仍要顯示資料庫既有的多值資料（不能為了修 POST 而弄壞 GET）。"""
+    from app.services.settings_service import SettingsService
+
+    with app.app_context():
+        SettingsService.update(
+            {
+                "lab_name_zh": "測試研究室",
+                "lab_name_en": "Test Lab",
+                "research_focus": [{"title_zh": "矽光子技術", "description_zh": "已儲存的說明"}],
+            }
+        )
+
+    html = logged_in_client.get("/admin/settings").get_data(as_text=True)
+
+    assert "矽光子技術" in html
+    assert "已儲存的說明" in html
