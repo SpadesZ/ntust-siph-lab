@@ -25,8 +25,12 @@ NTUST SiPh Lab - Admin Base Template
   2. 登出使用 POST + CSRF token（見 auth/routes.py 的說明）。
 
 已知限制與禁止事項：
-  1. 禁止在此加入 inline <script>（CSP 不允許）。
-  2. 禁止顯示密碼或 session 相關資訊。
+  1. 禁止 inline <script>（CSP 的 script-src 'self' 不允許）。
+     外部 JS 檔則是允許的 —— static/js/admin.js 即以
+     <script src defer> 載入。先前「因為 CSP 所以後台不能有 JS」
+     的推論並不成立，禁止的是 inline，不是 JS 本身。
+  2. 載入的 JS 必須是漸進增強：載入失敗時所有功能仍須可用。
+  3. 禁止顯示密碼或 session 相關資訊。
 
 Block：
   page_title  - 瀏覽器標題與 h1
@@ -211,5 +215,10 @@ Block：
 
     </main>
   </div>
+
+  {# 按鈕狀態機：連點防護、送出中回饋、未儲存變更警告。
+     外部檔案 + defer，符合 script-src 'self'（禁止的是 inline，
+     不是 JS 本身）。採漸進增強：載入失敗時表單行為完全不變。 #}
+  <script src="{{ url_for('static', filename='js/admin.js') }}" defer></script>
 </body>
 </html>
