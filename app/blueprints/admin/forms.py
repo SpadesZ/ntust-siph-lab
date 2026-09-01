@@ -334,11 +334,14 @@ class PersonForm(AdminForm):
         render_kw={"accept": _IMAGE_ACCEPT},
     )
     photo_alt_zh = StringField(
-        "照片替代文字（中）",
+        "照片替代文字",
         validators=[Optional(), Length(max=200)],
         description="有照片時為必填（SAI §16、AC-12）。",
     )
-    photo_alt_en = StringField("照片替代文字（英）", validators=[Optional(), Length(max=200)])
+    # photo_alt_en 已從表單移除：公開模板（_person_card / about /
+    # person_detail）在中英文模式下一律讀 photo_alt_zh，
+    # 英文替代文字填了也永遠不會顯示。保留 DB 欄位與既有資料，
+    # 若日後要真的支援雙語 alt，應改用 localized() 而非復原此欄位。
 
     # --- SEO ---
     seo_title_zh = StringField("SEO 標題覆寫", validators=[Optional(), Length(max=180)])
@@ -388,7 +391,6 @@ class PersonForm(AdminForm):
             "external_url": self.external_url.data,
             "external_url_label": self.external_url_label.data,
             "photo_alt_zh": self.photo_alt_zh.data,
-            "photo_alt_en": self.photo_alt_en.data,
             "seo_title_zh": self.seo_title_zh.data,
             "seo_description_zh": self.seo_description_zh.data,
             "sort_order": self.sort_order.data,
@@ -429,7 +431,6 @@ class PersonForm(AdminForm):
         self.external_url.data = person.external_url
         self.external_url_label.data = person.external_url_label
         self.photo_alt_zh.data = person.photo_alt_zh
-        self.photo_alt_en.data = person.photo_alt_en
         self.seo_title_zh.data = person.seo_title_zh
         self.seo_description_zh.data = person.seo_description_zh
         self.sort_order.data = person.sort_order
@@ -531,11 +532,12 @@ class ResearchForm(AdminForm):
         render_kw={"accept": _IMAGE_ACCEPT},
     )
     hero_image_alt_zh = StringField(
-        "主圖替代文字（中）",
+        "主圖替代文字",
         validators=[Optional(), Length(max=220)],
         description="有主圖時為必填（SAI §16、AC-12）。",
     )
-    hero_image_alt_en = StringField("主圖替代文字（英）", validators=[Optional(), Length(max=220)])
+    # hero_image_alt_en 已從表單移除：research_detail.html 在中英文
+    # 模式下一律讀 hero_image_alt_zh，理由同 PersonForm.photo_alt_en。
 
     # --- SEO & ordering ---
     seo_title_zh = StringField("SEO 標題覆寫", validators=[Optional(), Length(max=180)])
@@ -571,7 +573,6 @@ class ResearchForm(AdminForm):
             ],
             "keywords": self.keywords.data,
             "hero_image_alt_zh": self.hero_image_alt_zh.data,
-            "hero_image_alt_en": self.hero_image_alt_en.data,
             "seo_title_zh": self.seo_title_zh.data,
             "seo_description_zh": self.seo_description_zh.data,
             "sort_order": self.sort_order.data,
@@ -602,7 +603,6 @@ class ResearchForm(AdminForm):
         self.people.data = [link.person_id for link in output.person_links]
         self.keywords.data = ", ".join(output.keywords)
         self.hero_image_alt_zh.data = output.hero_image_alt_zh
-        self.hero_image_alt_en.data = output.hero_image_alt_en
         self.seo_title_zh.data = output.seo_title_zh
         self.seo_description_zh.data = output.seo_description_zh
         self.sort_order.data = output.sort_order
@@ -623,7 +623,9 @@ class SiteSettingForm(AdminForm):
     lab_name_en = StringField(
         "研究室名稱（英）*", validators=[DataRequired(), Length(max=200)]
     )
-    short_name = StringField("簡稱", validators=[Optional(), Length(max=80)])
+    # short_name 已從表單移除：全專案沒有任何地方讀取它
+    # （公開模板、SEO、結構化資料皆使用 lab_name_zh / lab_name_en）。
+    # 保留 DB 欄位與既有資料。
     department_zh = StringField("系所（中）", validators=[Optional(), Length(max=160)])
     department_en = StringField("系所（英）", validators=[Optional(), Length(max=200)])
     university_zh = StringField("學校（中）", validators=[Optional(), Length(max=160)])
@@ -687,10 +689,10 @@ class SiteSettingForm(AdminForm):
         validators=[Optional(), FileAllowed(_IMAGE_EXTENSIONS, _IMAGE_MESSAGE)],
         render_kw={"accept": _IMAGE_ACCEPT},
     )
-    production_base_url = StringField(
-        "正式網域紀錄", validators=[Optional(), Length(max=255), SafeUrl()],
-        description="僅供紀錄；實際 canonical 由伺服器環境變數 PUBLIC_BASE_URL 決定。",
-    )
+    # production_base_url 已從表單移除：它的說明本來就寫著
+    # 「僅供紀錄；實際 canonical 由環境變數 PUBLIC_BASE_URL 決定」——
+    # 也就是填了不會有任何效果，卻讓管理者以為改了它就會改網域。
+    # 保留 DB 欄位與既有資料。
 
     # --- External identity ---
     official_ntust_url = StringField(
@@ -713,7 +715,6 @@ class SiteSettingForm(AdminForm):
         return {
             "lab_name_zh": self.lab_name_zh.data,
             "lab_name_en": self.lab_name_en.data,
-            "short_name": self.short_name.data,
             "department_zh": self.department_zh.data,
             "department_en": self.department_en.data,
             "university_zh": self.university_zh.data,
@@ -736,7 +737,6 @@ class SiteSettingForm(AdminForm):
             "join_cta_url": self.join_cta_url.data,
             "default_title_suffix": self.default_title_suffix.data,
             "default_description_zh": self.default_description_zh.data,
-            "production_base_url": self.production_base_url.data,
             "official_ntust_url": self.official_ntust_url.data,
             "llms_txt_enabled": self.llms_txt_enabled.data,
         }
@@ -745,7 +745,6 @@ class SiteSettingForm(AdminForm):
         """把既有設定填入表單。"""
         self.lab_name_zh.data = setting.lab_name_zh
         self.lab_name_en.data = setting.lab_name_en
-        self.short_name.data = setting.short_name
         self.department_zh.data = setting.department_zh
         self.department_en.data = setting.department_en
         self.university_zh.data = setting.university_zh
@@ -768,7 +767,6 @@ class SiteSettingForm(AdminForm):
         self.join_cta_url.data = setting.join_cta_url
         self.default_title_suffix.data = setting.default_title_suffix
         self.default_description_zh.data = setting.default_description_zh
-        self.production_base_url.data = setting.production_base_url
         self.official_ntust_url.data = setting.official_ntust_url
         self.llms_txt_enabled.data = setting.llms_txt_enabled
 

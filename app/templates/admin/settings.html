@@ -37,8 +37,9 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
   1. 禁止在此存放任何 secret（SAI §8.9）。
   2. llms.txt 的說明文字必須明確標示為實驗性、非排名開關
      （SAI §13.2、§15.4）。
-  3. production_base_url 僅供紀錄，實際 canonical 由環境變數
-     決定（見 settings_service.py 的說明）。
+  3. 已從表單移除且刻意不復原的欄位：short_name（全站無人讀取）、
+     production_base_url（canonical 實際由環境變數決定，填了沒有效果）。
+     DB 欄位與既有資料保留，見 forms.py 的說明。
 
 驗證方式：
   pytest tests/test_settings.py
@@ -71,7 +72,6 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
     <div class="form-grid">
       {{ field(form.lab_name_zh, required=true) }}
       {{ field(form.lab_name_en, required=true) }}
-      {{ field(form.short_name) }}
       {{ field(form.university_zh) }}
       {{ field(form.university_en) }}
       {{ field(form.department_zh) }}
@@ -287,7 +287,6 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
     </p>
     <div class="form-grid">
       {{ field(form.default_title_suffix) }}
-      {{ field(form.production_base_url) }}
       {{ field(form.default_description_zh, css='textarea', rows=2, full=true) }}
     </div>
 

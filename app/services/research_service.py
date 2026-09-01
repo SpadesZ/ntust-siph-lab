@@ -241,7 +241,10 @@ class ResearchService:
             output.keywords = list(raw_keywords)
 
         output.hero_image_alt_zh = normalize_text(data.get("hero_image_alt_zh"))
-        output.hero_image_alt_en = normalize_text(data.get("hero_image_alt_en"))
+        # 理由同 PersonService 的 photo_alt_en：已不由表單維護，
+        # 無條件指派會在每次儲存時把既有資料清成 None。
+        if "hero_image_alt_en" in data:
+            output.hero_image_alt_en = normalize_text(data.get("hero_image_alt_en"))
 
         if data.get("sort_order") is not None:
             try:
