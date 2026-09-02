@@ -261,8 +261,13 @@ class PersonService:
         if "is_featured" in data:
             person.is_featured = bool(data.get("is_featured"))
 
-        person.seo_title_zh = normalize_text(data.get("seo_title_zh"))
-        person.seo_description_zh = normalize_text(data.get("seo_description_zh"))
+        # SEO 覆寫欄位已不由後台表單維護（SEOService 的自動生成已足夠）。
+        # 只在呼叫端明確傳入時才寫入 —— 否則表單每次儲存都會因為
+        # data 沒有這些 key 而把既有值清成 None。
+        if "seo_title_zh" in data:
+            person.seo_title_zh = normalize_text(data.get("seo_title_zh"))
+        if "seo_description_zh" in data:
+            person.seo_description_zh = normalize_text(data.get("seo_description_zh"))
 
         # legacy 旗標：一旦補齊研究焦點就自動解除提醒。
         # 為什麼自動解除：這個旗標的唯一用途是「提醒補資料」，

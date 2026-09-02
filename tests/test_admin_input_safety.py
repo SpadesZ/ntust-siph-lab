@@ -296,6 +296,38 @@ def test_settings_save_does_not_wipe_removed_fields(app):
         assert setting.production_base_url == "https://example.edu"
 
 
+def test_save_does_not_wipe_removed_seo_overrides(app):
+    """儲存不得清掉已從表單移除的 SEO 覆寫欄位。
+
+    這兩個欄位在實際資料中 14 筆全空，因此從表單移除；
+    但若哪天有人用 CLI 或 seed 寫入，後台的一次儲存
+    不該把它悄悄清掉 —— 使用者甚至看不到欄位。
+    """
+    from app.extensions import db
+    from app.models.person import Person
+    from app.services.person_service import PersonService
+
+    with app.app_context():
+        person = PersonService.create(
+            {
+                "name_zh": "SEO 保留測試",
+                "status": "current",
+                "research_focus_zh": "x",
+                "seo_title_zh": "手寫標題",
+                "seo_description_zh": "手寫描述",
+            }
+        )
+        person_id = person.id
+        assert person.seo_title_zh == "手寫標題"
+
+        # 模擬後台表單儲存：payload 不含這兩個 key
+        PersonService.update(person, {"name_zh": "SEO 保留測試", "status": "current"})
+
+        reloaded = db.session.get(Person, person_id)
+        assert reloaded.seo_title_zh == "手寫標題", "表單儲存把 SEO 覆寫清掉了"
+        assert reloaded.seo_description_zh == "手寫描述"
+
+
 def test_person_save_does_not_wipe_removed_alt_en(app):
     """儲存人物不得清掉已從表單移除的 photo_alt_en。"""
     from app.models.person import Person

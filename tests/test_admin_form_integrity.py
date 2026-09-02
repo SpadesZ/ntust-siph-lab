@@ -196,9 +196,12 @@ def test_person_form_save_button_is_inside_main_form(logged_in_client, person_wi
     )
 
 
+#: 涵蓋照片區塊「之前」與「之後」的欄位。
+#: 之後的那些（sort_order / is_featured）正是巢狀 form 缺陷發生時
+#: 會被踢出表單的欄位，因此必須留在清單裡。
 @pytest.mark.parametrize(
     "field_name",
-    ["name_zh", "photo_alt_zh", "seo_title_zh", "seo_description_zh", "sort_order", "is_featured"],
+    ["name_zh", "photo_alt_zh", "photo_alt_en", "sort_order", "is_featured"],
 )
 def test_person_form_keeps_all_fields_inside_main_form(
     logged_in_client, person_with_photo, field_name

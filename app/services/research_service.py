@@ -261,8 +261,12 @@ class ResearchService:
                 except (TypeError, ValueError):
                     pass
 
-        output.seo_title_zh = normalize_text(data.get("seo_title_zh"))
-        output.seo_description_zh = normalize_text(data.get("seo_description_zh"))
+        # 理由同 PersonService：已不由表單維護，無條件指派會在
+        # 每次儲存時把既有值清成 None。
+        if "seo_title_zh" in data:
+            output.seo_title_zh = normalize_text(data.get("seo_title_zh"))
+        if "seo_description_zh" in data:
+            output.seo_description_zh = normalize_text(data.get("seo_description_zh"))
 
     @staticmethod
     def _commit(action_summary: str) -> None:
