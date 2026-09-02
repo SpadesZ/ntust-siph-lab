@@ -370,14 +370,15 @@ class PersonForm(AdminForm):
         render_kw={"accept": _IMAGE_ACCEPT},
     )
     photo_alt_zh = StringField(
-        "照片替代文字",
+        "照片替代文字（中）",
         validators=[Optional(), Length(max=200)],
         description="有照片時為必填（SAI §16、AC-12）。",
     )
-    # photo_alt_en 已從表單移除：公開模板（_person_card / about /
-    # person_detail）在中英文模式下一律讀 photo_alt_zh，
-    # 英文替代文字填了也永遠不會顯示。保留 DB 欄位與既有資料，
-    # 若日後要真的支援雙語 alt，應改用 localized() 而非復原此欄位。
+    photo_alt_en = StringField(
+        "照片替代文字（英）",
+        validators=[Optional(), Length(max=200)],
+        description="選填。留空時英文版會沿用中文版並標記為中文（WCAG 3.1.2）。",
+    )
 
     # --- SEO ---
     seo_title_zh = StringField("SEO 標題覆寫", validators=[Optional(), Length(max=180)])
@@ -427,6 +428,7 @@ class PersonForm(AdminForm):
             "external_url": self.external_url.data,
             "external_url_label": self.external_url_label.data,
             "photo_alt_zh": self.photo_alt_zh.data,
+            "photo_alt_en": self.photo_alt_en.data,
             "seo_title_zh": self.seo_title_zh.data,
             "seo_description_zh": self.seo_description_zh.data,
             "sort_order": self.sort_order.data,
@@ -467,6 +469,7 @@ class PersonForm(AdminForm):
         self.external_url.data = person.external_url
         self.external_url_label.data = person.external_url_label
         self.photo_alt_zh.data = person.photo_alt_zh
+        self.photo_alt_en.data = person.photo_alt_en
         self.seo_title_zh.data = person.seo_title_zh
         self.seo_description_zh.data = person.seo_description_zh
         self.sort_order.data = person.sort_order
@@ -583,12 +586,15 @@ class ResearchForm(AdminForm):
         render_kw={"accept": _IMAGE_ACCEPT},
     )
     hero_image_alt_zh = StringField(
-        "主圖替代文字",
+        "主圖替代文字（中）",
         validators=[Optional(), Length(max=220)],
         description="有主圖時為必填（SAI §16、AC-12）。",
     )
-    # hero_image_alt_en 已從表單移除：research_detail.html 在中英文
-    # 模式下一律讀 hero_image_alt_zh，理由同 PersonForm.photo_alt_en。
+    hero_image_alt_en = StringField(
+        "主圖替代文字（英）",
+        validators=[Optional(), Length(max=220)],
+        description="選填。留空時英文版會沿用中文版並標記為中文（WCAG 3.1.2）。",
+    )
 
     # --- SEO & ordering ---
     seo_title_zh = StringField("SEO 標題覆寫", validators=[Optional(), Length(max=180)])
@@ -622,6 +628,7 @@ class ResearchForm(AdminForm):
             # parse_author_orders() 解析後注入（見該方法的說明）。
             "keywords": self.keywords.data,
             "hero_image_alt_zh": self.hero_image_alt_zh.data,
+            "hero_image_alt_en": self.hero_image_alt_en.data,
             "seo_title_zh": self.seo_title_zh.data,
             "seo_description_zh": self.seo_description_zh.data,
             "sort_order": self.sort_order.data,
@@ -715,6 +722,7 @@ class ResearchForm(AdminForm):
         # 作者順序不經由 form 欄位，由 template 直接讀 output.person_links。
         self.keywords.data = ", ".join(output.keywords)
         self.hero_image_alt_zh.data = output.hero_image_alt_zh
+        self.hero_image_alt_en.data = output.hero_image_alt_en
         self.seo_title_zh.data = output.seo_title_zh
         self.seo_description_zh.data = output.seo_description_zh
         self.sort_order.data = output.sort_order
