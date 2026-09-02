@@ -628,7 +628,9 @@ class ResearchForm(AdminForm):
         }
 
     @staticmethod
-    def parse_author_orders(form_data, valid_person_ids) -> tuple[list[dict], list[str]]:
+    def parse_author_orders(
+        form_data, valid_person_ids, names: dict[int, str] | None = None
+    ) -> tuple[list[dict], list[str]]:
         """解析每位成員的作者順序輸入。
 
         表單命名為 `author_order-<person_id>`：留空代表不列入，
@@ -648,12 +650,27 @@ class ResearchForm(AdminForm):
           每一列的每個欄位都必須送出。以 id 為 key 完全不受
           「某個輸入沒送出」影響，不會發生 A 的順序配到 B 身上。
 
+        ★ 錯誤訊息必須說出「這位成員不會被列入」：
+          無法解析的順序值會讓該成員整個被跳過，而 sync_people
+          是以「傳入的清單」為準 —— 也就是說原本掛在這篇成果上的
+          作者，會因為順序欄打錯一個字而被解除關聯。
+          只說「不是數字」的訊息會讓管理者以為那一欄沒生效而已，
+          不會意識到作者列已經少了一個人。學術網站上這個代價很高。
+
+        Args:
+            names: {person_id: 姓名}，用於產生指名道姓的錯誤訊息。
+                   未提供時退回以編號描述（不影響解析行為）。
+
         Returns:
             (entries, errors)
             entries 已依順序排好，可直接交給 ResearchService.sync_people。
         """
         entries: list[dict] = []
         errors: list[str] = []
+        names = names or {}
+
+        def _who(person_id: int) -> str:
+            return f"「{names[person_id]}」" if person_id in names else f"成員 #{person_id}"
 
         for person_id in valid_person_ids:
             raw = (form_data.get(f"author_order-{person_id}") or "").strip()
@@ -663,11 +680,18 @@ class ResearchForm(AdminForm):
             try:
                 order = int(raw)
             except ValueError:
-                errors.append(f"成員順序「{raw}」不是數字，請填 1 以上的整數。")
+                errors.append(
+                    f"{_who(person_id)} 的順序「{raw}」不是數字，"
+                    f"這次儲存不會把{_who(person_id)}列入作者。"
+                    "請填 1 以上的整數後重新儲存。"
+                )
                 continue
 
             if order < 1:
-                errors.append(f"成員順序「{raw}」必須是 1 以上的整數。")
+                errors.append(
+                    f"{_who(person_id)} 的順序「{raw}」必須是 1 以上的整數，"
+                    f"這次儲存不會把{_who(person_id)}列入作者。"
+                )
                 continue
 
             entries.append(

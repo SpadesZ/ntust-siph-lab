@@ -637,11 +637,16 @@ def _research_payload(form: ResearchForm) -> dict:
     因此必須在這裡合併進去，否則 sync_people 收不到關聯成員。
     """
     data = form.to_dict()
-    valid_ids = [person.id for person in people_repo.admin_list()]
-    entries, order_errors = ResearchForm.parse_author_orders(request.form, valid_ids)
+    people = people_repo.admin_list()
+    valid_ids = [person.id for person in people]
+    names = {person.id: person.name_zh for person in people}
+    entries, order_errors = ResearchForm.parse_author_orders(request.form, valid_ids, names)
     data["people"] = entries
+    # 這類錯誤會讓成員被排除在作者列之外（見 parse_author_orders），
+    # 屬於資料實際少了東西，不是單純的提醒 —— 用 error 而非 warning，
+    # 否則它在一堆綠色成功訊息裡不會被注意到。
     for message in order_errors:
-        flash(message, "warning")
+        flash(message, "error")
     return data
 
 
@@ -914,24 +919,42 @@ def _repeat_context(setting, *, from_form: bool) -> dict[str, list[dict]]:
     Args:
         from_form: True 時讀 request.form（POST 後重新渲染），
                    False 時讀資料庫（GET 首次載入）。
+
+    Raises:
+        ValueError: 多值欄位送出的數量不一致（見 parse_repeated）。
     """
-    if from_form:
-        return _parse_repeat_blocks()
-    return {prefix: getattr(setting, prefix) for prefix in _REPEAT_SPECS}
+    if not from_form:
+        return {prefix: getattr(setting, prefix) for prefix in _REPEAT_SPECS}
+
+    # 只保留有填內容的列。
+    #
+    # 為什麼要過濾：模板一律在既有資料之後再附加固定數量的空白列
+    # （研究方向 +3、研究室事實 +3、外部連結 +2）。若把解析結果
+    # 原樣送回模板，那些空白列會被當成「既有資料」再加一輪空白列 ——
+    # 驗證每失敗一次表單就長一截（實測研究方向 3 -> 6 -> 9 列）。
+    # 空白列本來就會被 SettingsService 的 _clean_* 丟棄，
+    # 提前在這裡濾掉不影響儲存結果。
+    return {
+        prefix: [row for row in rows if any((value or "").strip() for value in row.values())]
+        for prefix, rows in _parse_repeat_blocks().items()
+    }
 
 
-def _render_settings(form, setting, *, from_form: bool):
+def _render_settings(form, setting, *, repeats: dict[str, list[dict]]):
     """渲染設定頁。
 
     抽成函式的理由：POST 失敗有多個 return 點（驗證錯誤、
     圖片上傳失敗），每個都必須帶上正確的 repeats ——
     漏掉任何一個就會重現「多值列消失」的缺陷。
+
+    repeats 由呼叫端傳入而非在此重新解析：解析可能拋 ValueError，
+    而渲染階段沒有合適的地方處理它（見 settings()）。
     """
     return render_template(
         "admin/settings.html",
         form=form,
         setting=setting,
-        repeats=_repeat_context(setting, from_form=from_form),
+        repeats=repeats,
         confirm_form=ConfirmForm(),
     )
 
@@ -942,10 +965,27 @@ def settings():
     setting = get_site_settings()
     form = SiteSettingForm()
 
+    # 多值區塊先解析一次，後續儲存與重新渲染共用同一份結果。
+    #
+    # parse_repeated 在各欄位送出數量不一致時會拋 ValueError（那是
+    # 結構性問題，不該發生）。但不能就這樣讓它變成 500 ——
+    # 設定頁有大量長文案，500 會讓管理者剛打的內容全部消失，
+    # 而錯誤頁不會告訴他發生什麼事、也不會告訴他該怎麼辦。
+    try:
+        repeats = _repeat_context(setting, from_form=request.method == "POST")
+    except ValueError as exc:
+        logger.warning("設定頁多值欄位解析失敗：%s", exc)
+        flash(
+            "多值欄位（研究方向／研究室事實／外部連結）的資料結構異常，"
+            "這次的變更沒有儲存。請重新整理本頁後再編輯一次。",
+            "error",
+        )
+        return _render_settings(form, setting, repeats=_repeat_context(setting, from_form=False))
+
     if form.validate_on_submit():
         admin_id, ip = _actor()
         data = form.to_dict()
-        data.update(_parse_repeat_blocks())
+        data.update(repeats)
 
         notices: list[str] = []
         try:
@@ -954,7 +994,7 @@ def settings():
             )
         except SettingsServiceError as exc:
             flash(str(exc), "error")
-            return _render_settings(form, setting, from_form=True)
+            return _render_settings(form, setting, repeats=repeats)
 
         # 文字設定到這裡已經 commit。三個圖片欄位各自獨立處理，
         # 任何一個失敗都不影響已儲存的文字內容 —— 因此錯誤訊息
@@ -978,7 +1018,7 @@ def settings():
                     f"未能上傳：{exc} 請重新上傳該圖片即可，不需要重填其他欄位。",
                     "error",
                 )
-                return _render_settings(form, setting, from_form=True)
+                return _render_settings(form, setting, repeats=repeats)
 
         for notice in notices:
             flash(notice, "warning")
@@ -988,7 +1028,7 @@ def settings():
     if request.method == "GET":
         form.load_from(setting)
 
-    return _render_settings(form, setting, from_form=request.method == "POST")
+    return _render_settings(form, setting, repeats=repeats)
 
 
 #: 設定頁三個媒體欄位的中文名稱（確認頁文案用）。
