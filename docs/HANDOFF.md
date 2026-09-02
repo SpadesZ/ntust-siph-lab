@@ -23,6 +23,10 @@
 | 搜尋引擎索引 | ⛔ 刻意關閉（`ROBOTS_POLICY=private`） |
 | 舊站 Google Sites | 🟢 仍在線（刻意保留，等簽核） |
 | 部署分支合併進 main | ❌ 尚未合併 |
+| **後台表單修復（`fix/admin-form-integrity`）** | 🟡 **已完成待部署** — 見 §10.1 |
+
+> **線上跑的仍是舊版**：後台的儲存鈕在部分頁面（含教授頁）因巢狀 `<form>`
+> 而失效，該修復尚未部署。詳見 §10.1。
 
 ---
 
@@ -428,6 +432,9 @@ Flask-WTF 對 HTTPS 的 POST 會做 strict referer 檢查。
 
 ## 10. 驗收紀錄（2026-08-17）
 
+> 本節是 **2026-08-17 首次 cutover** 的紀錄。
+> 後續變更的驗收另記於 §10.1。
+
 | Gate | 結果 |
 | --- | --- |
 | G1 本機測試 | ✅ 818 passed, 3 skipped |
@@ -440,3 +447,55 @@ Flask-WTF 對 HTTPS 的 POST 會做 strict referer 檢查。
 | Smoke test | ✅ 24/25（第 25 項見 §7.6） |
 | 端到端資料驗證 | ✅ 5 位成員與 9 筆成果正確渲染於線上頁面 |
 | 管理後台登入 | ✅ 實測登入成功並進入 Dashboard |
+
+---
+
+## 10.1 驗收紀錄（2026-09-02，`fix/admin-form-integrity`）
+
+修復後台表單的一系列缺陷（巢狀 `<form>` 導致儲存鈕失效、多值列遺失、
+無二次確認、無連點防護等），以及四項「出錯後管理者走不出來」的問題。
+
+| Gate | 結果 |
+| --- | --- |
+| G1 本機測試 | ✅ **914 passed, 3 skipped** |
+| G2 PostgreSQL 可攜性（靜態掃描） | ✅ 23/23 |
+| G2 PostgreSQL 可攜性（實際連線） | ⚠️ **未重跑** — 理由見下 |
+| Schema 變更 | ✅ **無**。revision 仍為 `16bde59ce22f` |
+| 合併方式 | ✅ fast-forward，零衝突 |
+| 教授頁存檔（瀏覽器實測） | ✅ 儲存成功，PRG 與 flash 正常 |
+| 連點防護（瀏覽器實測） | ✅ 點 5 次只送出 1 次 |
+| 送出鎖解除（瀏覽器實測） | ✅ bfcache 返回後可再次送出 |
+| 中英切換 | ✅ `htmlLang` 正確，`about_intro_en` 生效 |
+
+### 為什麼這次沒有重跑 G2 的實際連線測試
+
+**不是因為它不重要，是因為這次的變更不觸及它所保護的東西。**
+
+1. **零 schema 變更。** 本分支對 `migrations/` 只改了檔頭註解，
+   Alembic revision 與 2026-08-17 通過 G2 時完全相同（`16bde59ce22f`）。
+   同一份 schema 已經在該次 gate 通過，也已在正式環境實際運行。
+2. **變更範圍不含資料庫層。** 改動集中在 `app/static/js/admin.js`、
+   admin 模板、`routes.py` 的表單渲染流程與 `forms.py` 的表單解析。
+   沒有新增查詢、沒有改動 ORM 模型、沒有新的 raw SQL。
+3. **靜態可攜性契約仍全數驗證。** `test_db_portability.py` 的 25 個測試
+   有 23 個不需要 PostgreSQL 連線，且全部通過 —— 包含「不得有 raw SQL」、
+   「不得用 PRAGMA」、「不得用 `strftime` / `julianday` / `group_concat`」、
+   「migration 不得使用 native enum」等真正會造成 PG 不相容的檢查。
+
+### ⛔ 下次必須重跑的條件
+
+**只要 `migrations/versions/` 新增任何檔案，G2 就不得再跳過。**
+屆時依 §7.4 的指令對 `siph_test` 執行（**不是 `neondb`**）。
+
+### 本次的操作警訊（保留為紀錄）
+
+協作過程中曾提供一組指向名為 `neondb` 之資料庫的連線字串作為「測試連線」。
+經唯讀檢查確認該端點的 schema 為空（0 張表），屬於另一個 Neon 專案，
+因此未造成任何損害。
+
+但 `neondb` 正是本專案**正式資料庫的名稱**（見 §2.2），而 G2 測試會執行
+`DROP SCHEMA IF EXISTS public CASCADE`。**擋下這次的是事前的唯讀檢查，
+不是流程本身。**
+
+→ 執行 G2 之前，一律先確認目標資料庫名稱是 `siph_test`，
+並以 `SELECT COUNT(*) FROM people` 之類的唯讀查詢確認它不含正式資料。
