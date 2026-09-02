@@ -1,8 +1,8 @@
 # NTUST SiPh Lab — 上線交接文件（HANDOFF）
 
 > **檔案路徑**：`docs/HANDOFF.md`
-> **建立日期**：2026-08-17　**版本**：v1.0
-> **對應部署**：Cloud Run revision `ntust-siph-lab-00002-dab`
+> **建立日期**：2026-08-17　**最後更新**：2026-09-02　**版本**：v1.1
+> **對應部署**：Cloud Run revision `ntust-siph-lab-00004-cod`
 >
 > 這份文件寫給「下一個接手的人或 AI」。目標是讓你**不必重讀整段對話**
 > 就能維護這個站台。所有數字都是實測值，不是規劃值。
@@ -22,11 +22,8 @@
 | **內容簽核（人工）** | ❌ **未完成 — 這是唯一的上線阻擋項** |
 | 搜尋引擎索引 | ⛔ 刻意關閉（`ROBOTS_POLICY=private`） |
 | 舊站 Google Sites | 🟢 仍在線（刻意保留，等簽核） |
-| 部署分支合併進 main | ❌ 尚未合併 |
-| **後台表單修復（`fix/admin-form-integrity`）** | 🟡 **已完成待部署** — 見 §10.1 |
-
-> **線上跑的仍是舊版**：後台的儲存鈕在部分頁面（含教授頁）因巢狀 `<form>`
-> 而失效，該修復尚未部署。詳見 §10.1。
+| 部署分支合併進 main | ✅ 已合併 |
+| **後台表單修復（`fix/admin-form-integrity`）** | ✅ **已於 2026-09-02 部署上線** — 見 §10.2 |
 
 ---
 
@@ -86,8 +83,10 @@ flask admin reset-password --username admin --generate
 
 | 設定 | 值 |
 | --- | --- |
-| 目前 revision | `ntust-siph-lab-00002-dab` |
-| 映像 | `asia-east1-docker.pkg.dev/ntust-siph-lab/siph-lab/ntust-siph-lab:c146cd8-health-alias` |
+| 目前 revision | `ntust-siph-lab-00004-cod`（2026-09-02 部署） |
+| 映像 | `asia-east1-docker.pkg.dev/ntust-siph-lab/siph-lab/ntust-siph-lab:bfc240f` |
+| 映像 digest | `sha256:f8d9375107cfa8e82b6893a0aa5e003e28f9ba70f3dc4748d4139cfd99beb90a` |
+| 上一個 revision（回滾目標） | `ntust-siph-lab-00002-dab`，映像 tag `c146cd8-health-alias` |
 | CPU / 記憶體 | 1 / 512Mi |
 | minScale / maxScale | **0** / 4 |
 | 並行數 / 逾時 | 40 / 60s |
@@ -174,15 +173,39 @@ PUBLIC_BASE_URL=https://ntust-siph-lab-105924420674.asia-east1.run.app
 
 ## 4. Git 分支現況
 
+> ### ⛔ 2026-09-02：歷史已重寫，本節以下的舊 SHA 全部失效
+>
+> 為移除 commit 訊息中的 AI 署名（`Co-Authored-By` trailer），
+> 本 repo 的歷史於 2026-09-02 以 `git filter-repo` 重寫並強制推送。
+> **45 個 commit 的 SHA 全數改變**，因此本文件中任何 2026-09-02 之前
+> 記錄的 commit SHA 都已不存在，僅作為歷史敘述保留。
+>
+> 重寫只改 commit 訊息：**commit 數與每個 commit 的 tree hash 完全不變**，
+> 程式碼一個 byte 都沒動。重寫前的完整鏡像備份保存於
+> `Desktop\_ai-signature-cleanup-backup-20260902\mirrors\`。
+>
+> **對照表（舊 → 新）**：
+>
+> | 說明 | 重寫前 | 重寫後 |
+> | --- | --- | --- |
+> | `main`（本次部署的來源） | `bfc240f` | `1556a14` |
+> | 兩分支合併點 | `69fba38` | 已失效 |
+> | 首次 cutover 的建置來源 | `c146cd8` | 已失效 |
+>
+> 映像 tag 仍沿用舊 SHA 命名（`bfc240f`、`c146cd8-health-alias`），
+> **映像本身不受影響**，但 tag 名稱已無法對應到任何 commit。
+> 映像與程式碼的追溯改以 §2.1 的 digest 為準。
+
 **兩個功能分支已於 2026-08-17 全部合併進 `main`**（以 `--no-ff` 保留分支歷史）：
 
 ```
-main  69fba38
+main  69fba38（已失效，見上方警告）
  ├── Merge: 中英雙語切換（feat/bilingual-toggle）           4 個 commit
  └── Merge: Cloud Run 部署與文件（feat/cloudrun-deployment）  7 個 commit
 ```
 
-**目前只有 `main` 一個分支**（本機與遠端皆是）。
+**目前有 `main` 與 `fix/admin-form-integrity` 兩個分支**（本機與遠端皆是）。
+後者已於 2026-09-02 合併進 `main` 並部署，保留僅為紀錄，可隨時刪除。
 兩個功能分支合併後已刪除 —— 它們已落後 `main` 7～10 個 commit，
 留著只會讓人誤以為可以直接 checkout 繼續開發，
 而那些過期分支上沒有 `/health`、ADR，`.gitignore` 也缺少
@@ -203,8 +226,9 @@ main  69fba38
 都存在於遠端後刪除。
 
 > **`main` 現在等於線上跑的程式碼。**
-> 線上 revision `ntust-siph-lab-00002-dab` 的映像 `c146cd8-health-alias`
-> 建置於這兩個分支的聯集，與合併後的 `main` 內容一致。
+> 線上 revision `ntust-siph-lab-00004-cod` 的映像
+> （digest `sha256:f8d9375…`，見 §2.1）建置於歷史重寫前的 `main`，
+> 其內容與重寫後的 `main`（`1556a14`）逐檔相同 —— 重寫不改任何 tree。
 > 因此從 `main` 重新建置不會改變線上行為。
 
 ---
@@ -241,10 +265,16 @@ gcloud run services update-traffic ntust-siph-lab --region=asia-east1 `
 
 ### 回滾
 
+回到前一個已驗證的 revision（2026-09-02 部署前線上跑的就是它）：
+
 ```bash
 gcloud run services update-traffic ntust-siph-lab --region=asia-east1 `
-  --to-revisions=ntust-siph-lab-00001-dx5=100 --project=ntust-siph-lab
+  --to-revisions=ntust-siph-lab-00002-dab=100 --project=ntust-siph-lab
 ```
+
+只切流量不動資料，因此**零 schema 變更的部署可以無條件回滾**。
+現存 revision 可用 `gcloud run revisions list --service=ntust-siph-lab
+--region=asia-east1 --project=ntust-siph-lab` 查詢。
 
 ---
 
@@ -499,3 +529,47 @@ Flask-WTF 對 HTTPS 的 POST 會做 strict referer 檢查。
 
 → 執行 G2 之前，一律先確認目標資料庫名稱是 `siph_test`，
 並以 `SELECT COUNT(*) FROM people` 之類的唯讀查詢確認它不含正式資料。
+
+---
+
+## 10.2 部署紀錄（2026-09-02，`fix/admin-form-integrity` 上線）
+
+§10.1 驗收通過的修復於本日部署，依 §5 的流程執行。
+
+| 階段 | 結果 |
+| --- | --- |
+| 建置 | Cloud Build `a1c916b2`，SUCCESS，1m49s |
+| 映像 | tag `bfc240f`，digest `sha256:f8d9375107cfa8e82b6893a0aa5e003e28f9ba70f3dc4748d4139cfd99beb90a` |
+| candidate 部署 | `ntust-siph-lab-00004-cod`，`--no-traffic`，digest 與建置結果相符 |
+| candidate smoke | **22/25** — 見下方說明 |
+| 切流量 | `--to-latest`，100% → `00004-cod` |
+| 正式站 smoke | **24/25**，與部署前基準逐項相同 |
+| `flask db upgrade` | **未執行**（零 schema 變更，revision 仍為 `16bde59ce22f`） |
+
+### ⚠️ candidate 網址的正確預期是 22/25，不是 24/25
+
+§7.6 把「canonical/sitemap 指向本站網域」寫成一列，但在
+`scripts/smoke_cloud.py` 裡那是**兩個獨立檢查**（canonical 主機、sitemap
+全部 loc）。因此對 `candidate---` 標籤網址測試時必然有 **3 個** 預期內的
+失敗，而非 1 個：
+
+| 檢查 | 正式站 | candidate | 原因 |
+| --- | --- | --- | --- |
+| `robots.txt 禁止 /admin` | FAIL | FAIL | `ROBOTS_POLICY=private` 輸出全站 `Disallow: /` |
+| `canonical 指向本站網域` | PASS | FAIL | canonical 指向 `PUBLIC_BASE_URL` 才是對的 |
+| `sitemap 全部指向本站網域` | PASS | FAIL | 同上 |
+
+**判讀方式**：candidate 得 22/25 且失敗項恰為上述三項即為通過；
+出現第四個失敗才是真的有問題。與正式站基準逐項比對是最可靠的判別法。
+
+### 未由自動化涵蓋的驗收項
+
+教授頁「儲存變更」的 form owner 需登入後台才能確認，而管理員密碼依 §1
+刻意不存放於任何系統，因此**無法以腳本驗證**。本次改以三項間接證據佐證：
+
+1. 部署映像的 `app/static/js/admin.js` 與本機 `bfc240f` **byte-identical**
+   （SHA256 相符）；舊 revision 對該路徑回 404，該檔為本次新增。
+2. `tests/test_admin_form_integrity.py` 10 項全過。
+3. 模板中「儲存變更」位於主表單 `</form>` 之前，動作表單全在其後。
+
+→ 最終確認仍須人工在瀏覽器操作一次。
