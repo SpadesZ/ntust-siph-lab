@@ -403,7 +403,8 @@ Flask-WTF 對 HTTPS 的 POST 會做 strict referer 檢查。
 
 | 文件 | 內容 |
 | --- | --- |
-| `docs/SAI.md` | 系統規格書（外部交付，**不應改寫**） |
+| `docs/SAI.md` | 系統規格書（外部交付，**不應改寫**）。決策表含 ADR-001～011 |
+| **`docs/NOTES.md`** | **碼層決策紀錄（NOTE-001～009）。程式中的 `NOTE(NOTE-NNN):` 都指向這裡** |
 | `docs/adr/ADR-012` | 母站遷入人物的發布豁免 |
 | **`docs/adr/ADR-013`** | **以 Neon 取代 Cloud SQL（本次）** |
 | **`docs/adr/ADR-014`** | **`/healthz` 保留路徑與 `/health` 別名（本次）** |
@@ -411,7 +412,13 @@ Flask-WTF 對 HTTPS 的 POST 會做 strict referer 檢查。
 | `deploy/migration-runbook.md` | cutover 與 rollback 程序（已移除 Cloud SQL Proxy） |
 | `deploy/service.yaml` | 宣告式設定（**已改寫**，3 個 secret、無 cloudsql 註解） |
 | `docs/acceptance-checklist.md` | AC-01～AC-26 驗收清單 |
+| `docs/header-note-audit-2026-08-18.md` | 檔頭與 NOTE 制度稽核（含尚未完成的補件清單） |
 | `legacy/google_sites/` | 母站零遺漏遷移的稽核證據鏈（ADR-011） |
+
+> **三層決策文件不得互相複製**：`SAI.md`（ADR-001～011，外部規格，不改寫）
+> → `docs/adr/`（ADR-012 起的新決策）→ `docs/NOTES.md`（碼層不變量）。
+> `tests/test_repo_integrity.py` 會檢查編號都查得到對應條目，
+> 以及檔頭 `驗證方式` 指到的測試函式真的存在。
 
 > `deploy/` 底下三份文件已於 2026-08-17 全面對齊實際部署。
 > 文件中仍出現「Cloud SQL」字樣之處，都是在說明**為什麼不用它**，

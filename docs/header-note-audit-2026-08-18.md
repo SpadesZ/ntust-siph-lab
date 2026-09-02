@@ -20,8 +20,10 @@
 | `docs/NOTES.md` | 不存在 | **已建立，9 則 NOTE** |
 | 程式中 `NOTE(NOTE-NNN):` 標記 | 0 | **9（雙向閉環，無孤兒）** |
 | 檔案層級引用失效 | 0 | 0 |
-| **函式層級引用失效** | **22 / 32（69%）** | 20 / 34（已修 2） |
-| 測試 | — | **818 passed, 3 skipped** |
+| **函式層級引用失效** | **23 / 33（70%）** | **0 / 56** |
+| NOTE 有可執行斷言保護 | — | **9 / 9** |
+| CI 是否擋得住上述問題 | 否 | **是（新增 3 項制度檢查）** |
+| 測試 | 818 passed | **829 passed, 3 skipped** |
 
 一句話：**檔頭覆蓋率高但欄位不齊；NOTE 制度原本整套缺席，本次已建立；
 最嚴重的問題是本來沒被發現的「函式層級失效引用」。**
@@ -88,16 +90,31 @@
 規範明訂「禁止留下失效 reference」。這類引用比沒有引用更糟：
 它讓維護者以為某個行為有測試保護，實際上沒有。
 
-已修 2 處：
+**已全部修正（23 處）。** 每一處都逐一判斷是「測試改名」還是「測試根本沒寫」，
+未使用批次取代——那只會把失效引用換成指向錯誤測試。
 
-| 檔案 | 原引用 | 修正為 |
+三處屬於指錯檔案或無測試，處理方式不同：
+
+| 檔案 | 原引用 | 處理 |
 |---|---|---|
-| `app/models/__init__.py` | `test_schema.py::test_all_tables_present` | `::test_all_core_tables_present`＋`::test_models_are_all_registered_in_metadata` |
-| `app/extensions.py` | `test_db_portability.py::test_sqlite_foreign_keys_enforced` | `test_schema.py::test_sqlite_foreign_keys_enforced`（原本連檔案都指錯） |
+| `app/extensions.py` | `test_db_portability.py::test_sqlite_foreign_keys_enforced` | 連**檔案**都指錯，實際在 `test_schema.py` |
+| `app/templates/admin/_macros.html` | `test_admin.py::test_form_fields_have_labels` | 實際在 `test_a11y.py::test_ac16_admin_forms_have_associated_labels` |
+| `app/static/css/tokens.css` | `test_a11y.py::test_contrast_tokens_documented` | **對比值根本沒有自動測試**，改列 3 個真實的 a11y 測試，並明寫「對比僅靠人工複驗」 |
 
-**尚待修正的 20 處**：
+另有 2 處（`admin/people_list.html`、`admin/research_list.html`）宣稱驗證
+「列表篩選」，但 admin 列表篩選確實沒有測試。已改為指向真實的
+`test_admin_pages_render`，並加註「篩選行為沒有自動測試，須人工複驗」——
+**不假裝有覆蓋**。
 
-| 引用來源 | 指向的不存在測試 |
+> **`.txt` 的教訓**：本次修完 20 處後，裝進 CI 的檢查器立刻又抓到第 21 處——
+> `app/templates/public/robots.txt` 指向不存在的 `test_robots_disallows_admin`
+> （實際為 `test_robots_disallows_admin_and_points_to_sitemap`）。
+> 稽核腳本漏掉它，是因為掃描副檔名沒有納入 `.txt`，而 repo 既有的
+> `_SCANNED_SUFFIXES` 有。**這正是「把規則交給 CI，而不是交給稽核者的細心」的理由。**
+
+原始失效清單（保留作為紀錄）：
+
+| 引用來源 | 當時指向的不存在測試 |
 |---|---|
 | `app/models/audit_log.py:77` | `tests/test_auth.py::test_login_writes_audit_log` |
 | `app/models/redirect.py:70` | `tests/test_research.py::test_slug_change_creates_redirect` |
@@ -120,8 +137,8 @@
 | `app/utils/validators.py:70` | `tests/test_validators.py::test_dangerous_scheme_rejected` |
 | `scripts/legacy_baseline.py:234` | `tests/test_legacy_migration.py::test_lab_name_migrated` |
 
-每一處都要逐一判斷：是**測試名改過**（改引用），還是**測試根本沒寫**（補測試）。
-不能一律用 sed 改掉——那只會把「引用失效」換成「引用到錯的測試」。
+（另加 `app/templates/public/robots.txt:26`、`app/models/__init__.py:59`、
+`app/extensions.py:80`，共 23 處，全部已修。）
 
 ---
 
@@ -196,8 +213,21 @@ NOTES.md 文末另列出 **3 則沒有對應測試**的 NOTE（002、005、007�
    - 已驗證兩個 migration 的 revision id 與 Alembic docstring 未受影響。
 3. **`app/models/__init__.py`** 升級為十欄樣板（拆開模組定位／主要責任、
    補功能說明、修正失效引用、登記 NOTE-009），版本 v1.0 → v1.1。
-4. **2 處失效引用修正**（見 §3）。
-5. 全測試通過：**818 passed, 3 skipped**（skip 為未設 `TEST_POSTGRES_URL`）。
+4. **23 處函式層級失效引用全部修正**（見 §3）。
+5. **`tests/test_repo_integrity.py` 新增 3 項制度性檢查**（v1.0 → v1.1）：
+   - `test_no_dangling_test_function_references`：
+     `tests/x.py::test_y` 必須精確到**函式層級**存在
+   - `test_every_note_marker_has_an_entry`：
+     程式中每個 `NOTE(NOTE-NNN)` 必須在 `docs/NOTES.md` 有同號條目
+   - `test_every_note_entry_is_referenced_in_code`：
+     反方向——NOTES.md 的條目必須有程式碼引用點，避免決策與實作脫節
+
+   三項都做過**變異測試**確認不是空轉：植入 `NOTE-999` 孤兒標記與
+   `NOTE-998` 無引用條目，兩項檢查都如預期失敗，移除後恢復通過。
+   稽核報告本身以 `header-note-audit-*` 前綴豁免，因為它刻意記錄壞掉的引用作為歷史證據。
+6. **`tests/test_note_invariants.py` 新建**（8 條）：替 NOTE-005／007／008
+   補上原本沒有的行為斷言，見 §7。
+7. 全測試通過：**829 passed, 3 skipped**（skip 為未設 `TEST_POSTGRES_URL`）。
 
 ---
 
@@ -205,18 +235,40 @@ NOTES.md 文末另列出 **3 則沒有對應測試**的 NOTE（002、005、007�
 
 | 順位 | 工作 | 理由 |
 |---|---|---|
-| 1 | 逐一處理 §3 剩餘 20 處失效引用 | 讓人誤以為有測試保護，比沒寫更危險 |
-| 2 | 補 NOTES.md 文末列出的 3 則缺測試（NOTE-002/005/007） | 這些決策目前可被無聲改掉 |
-| 3 | 在 `tests/test_repo_integrity.py` 加制度性檢查 | 見下 |
+| ~~1~~ | ~~處理失效引用~~ | ✅ 已完成（23 處） |
+| ~~2~~ | ~~加制度性檢查~~ | ✅ 已完成（3 項，含變異測試） |
+| ~~3~~ | ~~補缺測試的 NOTE~~ | ✅ 已完成（`tests/test_note_invariants.py`，8 條） |
 | 4 | 全面補 `維護契約`（缺 72 檔）與 `責任邊界`（缺 65 檔） | 覆蓋率最低、價值最高的兩欄 |
 | 5 | 補 `功能說明` 欄至全部檔案 | 新欄位，目前 4/121 |
 | 6 | 讓 `版本` 真的遞增、補 `最後重大修改` | 目前 87% 日期失準、版本全為 v1.0 |
 
-**第 3 項的具體內容**（把規則變成 CI 擋得住的東西，而不是靠人記得）：
+剩下的第 4~6 項屬於大量、低風險的機械性補件，可分批進行。
 
-- 檔頭 `驗證方式` 出現的 `tests/xxx.py::test_yyy` 必須**函式層級**存在
-- 程式中每個 `NOTE(NOTE-NNN):` 必須在 `docs/NOTES.md` 有同號條目
-- `docs/NOTES.md` 每則 NOTE 的 `驗證` 欄提到的測試必須存在
+### 第 3 項的執行結果與一處更正
 
-本次稽核用的檢查腳本邏輯已驗證可行（32 個引用、22 個失效一次抓出），
-可直接移植成測試。
+新增 `tests/test_note_invariants.py`（8 條），專收「跨模組、決策層級、
+在既有測試檔中沒有自然歸屬」的不變量：
+
+- **NOTE-005**：以 SQLAlchemy `before_cursor_execute` 攔截實際送出的 SQL，
+  斷言暖機後的公開頁 GET 不再產生任何寫入。用攔截 SQL 而非比對資料列數，
+  是因為列數比對會漏掉「寫入後又改回原值」與「寫入後 rollback」，
+  兩者仍然違反本決策。
+- **NOTE-007**（6 條）：含一條 `test_note007_salt_actually_participates_in_the_digest`
+  ——**少了它，把實作改成純 `sha256(ip)` 也會讓其他測試全綠**，
+  而那正是本 NOTE 要防的假去識別化。
+- **NOTE-008**：超長 summary 截斷而非拋錯。
+
+NOTE-005 的攔截器另做過控制組驗證：在同一個 context manager 內執行
+`AuditLog.write()` + commit，確認確實攔到 `INSERT INTO audit_logs`，
+證明該測試不是因為 listener 沒掛上而假性通過。
+
+> **更正**：上一版報告與 NOTES.md 初版都記載「NOTE-002 訊息一致性無專屬測試」。
+> **那是錯的。** `tests/test_auth.py::test_ac02_unknown_user_and_wrong_password_are_indistinguishable`
+> 一直都在，而且比預期更完整——連「錯誤訊息不得出現『不存在』『查無』字樣」
+> 都驗了，還特地說明為何只比對 flash 而不比對整份 HTML（表單會回填使用者
+> 自己輸入的帳號，那不構成資訊洩漏）。
+> **教訓：補測試前先查既有測試，不要憑稽核腳本的關鍵字比對就認定沒有。**
+
+> 值得注意：第 1、2 項合起來的效果是——同類問題以後不需要再靠稽核發現。
+> 這正是本次最有價值的產出：`test_repo_integrity.py` 在裝好後**立刻**
+> 抓到一處連本次稽核腳本都漏掉的失效引用（見 §3 的 `.txt` 教訓）。
