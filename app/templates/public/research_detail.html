@@ -98,13 +98,17 @@ GEO contract（SAI §13.1）：
     {# ================= 主要內容 ================= #}
     <div>
       {% if output.hero_image_path %}
+      {# alt 與圖說走 localized()：英文版沒填時回退中文並標記真實語言
+         （WCAG 3.1.2），避免螢幕閱讀器以英文腔唸中文。 #}
+      {% set _alt, _alt_lang = localized(output, 'hero_image_alt') %}
       <figure style="margin: 0 0 var(--space-8);">
         <img class="output-hero-image"
              src="{{ media_url(output.hero_image_path) }}"
-             alt="{{ output.hero_image_alt_zh or (output.display_title ~ t('illustration_suffix')) }}"
+             alt="{{ _alt or (output.display_title ~ t('illustration_suffix')) }}"
+             {% if _alt %}lang="{{ _alt_lang }}"{% endif %}
              width="900" height="500" loading="eager">
-        {% if output.hero_image_alt_zh %}
-        <figcaption class="figure-caption" lang="zh-Hant-TW">{{ output.hero_image_alt_zh }}</figcaption>
+        {% if _alt %}
+        <figcaption class="figure-caption" lang="{{ _alt_lang }}">{{ _alt }}</figcaption>
         {% endif %}
       </figure>
       {% endif %}

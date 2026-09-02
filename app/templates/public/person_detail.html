@@ -58,9 +58,13 @@ AC-05 對照：
   {# ---------- 首屏（SAI §5.2） ---------- #}
   <header class="person-hero">
     {% if person.photo_path %}
+    {# alt 走 localized()：英文版沒填時會回退中文並標記真實語言，
+       否則螢幕閱讀器會用英文腔逐字唸中文（WCAG 3.1.2）。 #}
+    {% set _alt, _alt_lang = localized(person, 'photo_alt') %}
     <img class="person-hero__photo"
          src="{{ media_url(person.photo_path) }}"
-         alt="{{ person.photo_alt_zh or (_name ~ ' ' ~ t('photo_suffix')) }}"
+         alt="{{ _alt or (_name ~ ' ' ~ t('photo_suffix')) }}"
+         {% if _alt %}lang="{{ _alt_lang }}"{% endif %}
          width="200" height="240">
     {% endif %}
 
