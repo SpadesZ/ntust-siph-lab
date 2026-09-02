@@ -381,10 +381,10 @@ class PersonForm(AdminForm):
     )
 
     # --- SEO ---
-    seo_title_zh = StringField("SEO 標題覆寫", validators=[Optional(), Length(max=180)])
-    seo_description_zh = TextAreaField(
-        "SEO 描述覆寫", validators=[Optional(), Length(max=320)]
-    )
+    # seo_title_zh / seo_description_zh 已從表單移除：
+    # 14 筆實際資料（5 位成員 + 9 篇成果）全部沒有填過，
+    # 而 SEOService 由姓名與研究焦點自動生成的標題與描述已足夠。
+    # 保留 DB 欄位與既有資料，SEOService 仍優先採用（若日後有值）。
 
     # --- Ordering ---
     sort_order = IntegerField("排序值", validators=[Optional(), NumberRange(min=0, max=99999)])
@@ -429,8 +429,6 @@ class PersonForm(AdminForm):
             "external_url_label": self.external_url_label.data,
             "photo_alt_zh": self.photo_alt_zh.data,
             "photo_alt_en": self.photo_alt_en.data,
-            "seo_title_zh": self.seo_title_zh.data,
-            "seo_description_zh": self.seo_description_zh.data,
             "sort_order": self.sort_order.data,
             "is_featured": self.is_featured.data,
         }
@@ -470,8 +468,6 @@ class PersonForm(AdminForm):
         self.external_url_label.data = person.external_url_label
         self.photo_alt_zh.data = person.photo_alt_zh
         self.photo_alt_en.data = person.photo_alt_en
-        self.seo_title_zh.data = person.seo_title_zh
-        self.seo_description_zh.data = person.seo_description_zh
         self.sort_order.data = person.sort_order
         self.is_featured.data = person.is_featured
 
@@ -597,8 +593,7 @@ class ResearchForm(AdminForm):
     )
 
     # --- SEO & ordering ---
-    seo_title_zh = StringField("SEO 標題覆寫", validators=[Optional(), Length(max=180)])
-    seo_description_zh = TextAreaField("SEO 描述覆寫", validators=[Optional(), Length(max=320)])
+    # seo_title_zh / seo_description_zh 已從表單移除（理由同 PersonForm）。
     sort_order = IntegerField("排序值", validators=[Optional(), NumberRange(min=0, max=99999)])
 
     submit = SubmitField("儲存")
@@ -629,8 +624,6 @@ class ResearchForm(AdminForm):
             "keywords": self.keywords.data,
             "hero_image_alt_zh": self.hero_image_alt_zh.data,
             "hero_image_alt_en": self.hero_image_alt_en.data,
-            "seo_title_zh": self.seo_title_zh.data,
-            "seo_description_zh": self.seo_description_zh.data,
             "sort_order": self.sort_order.data,
         }
 
@@ -723,8 +716,6 @@ class ResearchForm(AdminForm):
         self.keywords.data = ", ".join(output.keywords)
         self.hero_image_alt_zh.data = output.hero_image_alt_zh
         self.hero_image_alt_en.data = output.hero_image_alt_en
-        self.seo_title_zh.data = output.seo_title_zh
-        self.seo_description_zh.data = output.seo_description_zh
         self.sort_order.data = output.sort_order
 
 
@@ -820,13 +811,17 @@ class SiteSettingForm(AdminForm):
     )
 
     # --- Advanced ---
-    llms_txt_enabled = BooleanField(
-        "啟用 /llms.txt（實驗性相容層）",
-        description=(
-            "這是給部分 AI 檢索工具的實驗性檔案，"
-            "並非 Google 排名的必要條件，也不保證任何排名效果（SAI §13.2）。"
-        ),
-    )
+    # llms_txt_enabled 已從表單移除。
+    #
+    # 這個開關實際上要兩個條件同時成立才生效：這裡打勾，
+    # 而且伺服器端要設 ENABLE_LLMS_TXT=true。也就是說在後台
+    # 勾了它，多數情況下什麼事都不會發生 —— 而欄位說明本身就寫著
+    # 「並非 Google 排名的必要條件，也不保證任何排名效果」。
+    #
+    # 一個「勾了通常沒作用、而且官方說明不需要」的開關，
+    # 放在後台只會讓管理者困惑。需要啟用時改環境變數即可，
+    # 那本來就是部署層的決定（SAI §13.2）。
+    # DB 欄位與既有值保留，SettingsService 仍接受明確傳入。
 
     submit = SubmitField("儲存設定")
 
@@ -858,7 +853,6 @@ class SiteSettingForm(AdminForm):
             "default_title_suffix": self.default_title_suffix.data,
             "default_description_zh": self.default_description_zh.data,
             "official_ntust_url": self.official_ntust_url.data,
-            "llms_txt_enabled": self.llms_txt_enabled.data,
         }
 
     def load_from(self, setting) -> None:
@@ -888,7 +882,6 @@ class SiteSettingForm(AdminForm):
         self.default_title_suffix.data = setting.default_title_suffix
         self.default_description_zh.data = setting.default_description_zh
         self.official_ntust_url.data = setting.official_ntust_url
-        self.llms_txt_enabled.data = setting.llms_txt_enabled
 
     @staticmethod
     def parse_repeated(form_data, keys: list[str], prefix: str) -> list[dict]:
