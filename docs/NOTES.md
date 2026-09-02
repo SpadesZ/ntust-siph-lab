@@ -52,8 +52,11 @@
 - 決策：兩種失敗必須回**完全相同**的訊息。
 - 原因：若可區分，攻擊者能先列舉出存在的帳號，再把猜測算力集中在密碼上。
 - 維護邊界：修改文案時必須同時改兩處，或維持共用同一常數。
-- 驗證：`tests/test_auth.py::test_ac02_failed_login_writes_audit_log`
-  （稽核面）；訊息一致性目前**無專屬測試**，見文末「待補測試」。
+- 驗證：`tests/test_auth.py::test_ac02_unknown_user_and_wrong_password_are_indistinguishable`
+  ——同時比對狀態碼與頁面上的錯誤訊息，並斷言訊息不含「不存在」「查無」。
+  該測試刻意只比對 flash／欄位錯誤而非整份 HTML，因為表單會回填使用者
+  自己輸入的帳號，那不構成資訊洩漏。
+  稽核面另見 `::test_ac02_failed_login_writes_audit_log`。
 
 ## NOTE-003：照片上傳失敗不得把使用者送回新增表單
 
@@ -90,8 +93,11 @@
 - 原因：公開頁面對爬蟲與匿名流量，任何 GET 寫入都會被放大成寫入風暴，
   且讓「唯讀副本 / 快取」這類擴充方式失效。
 - 維護邊界：新增公開路由時不得引入寫入；需要計數等功能必須另案設計。
-- 驗證：`tests/test_repo_integrity.py`（結構性檢查）。
-  **無直接的「GET 不寫入」測試**，見文末「待補測試」。
+- 驗證：`tests/test_note_invariants.py::test_note005_public_get_requests_do_not_write_to_database`
+  ——以 SQLAlchemy `before_cursor_execute` 攔截實際送出的 SQL，
+  斷言暖機後的公開頁 GET 不再產生任何 INSERT／UPDATE／DELETE。
+  用攔截 SQL 而非比對資料列數，是因為列數比對會漏掉「寫入後改回原值」
+  與「寫入後 rollback」，兩者仍然違反本決策。
 
 ## NOTE-006：`/uploads/<path>` 只在 `STORAGE_BACKEND=local` 時註冊
 
@@ -112,9 +118,16 @@
 - 原因：固定預設 salt 會產生**可被完整反查、卻讓人誤以為安全**的假去識別化——
   比不做去識別化更危險，因為它會讓人停止警惕。
 - 維護邊界：此表只增不改；禁止提供 UI 讓管理員編輯或刪除稽核紀錄。
-- 驗證：`tests/test_schema.py::test_audit_action_check_constraint`、
+- 驗證：`tests/test_note_invariants.py` 的五條：
+  `::test_note007_no_hardcoded_default_salt`（無硬編碼預設值）、
+  `::test_note007_without_salt_ip_is_not_recorded`、
+  `::test_note007_with_salt_produces_irreversible_short_hash`、
+  `::test_note007_hash_is_stable_per_source_but_differs_across_sources`、
+  `::test_note007_salt_actually_participates_in_the_digest`
+  （換 salt 必須換出不同雜湊——少了這條，改成純 `sha256(ip)` 也會全綠）、
+  `::test_note007_write_stores_null_ip_hash_when_salt_absent`（端到端）。
+  另見 `tests/test_schema.py::test_audit_action_check_constraint`、
   `::test_audit_log_survives_admin_deletion`。
-  **salt 模式本身無專屬測試**，見文末「待補測試」。
 
 ## NOTE-008：稽核寫入失敗不得讓使用者的正常操作失敗
 
@@ -125,7 +138,9 @@
   是把可用性賠給了觀測性。
 - 維護邊界：這是**刻意不擋**的失敗，不是遺漏的錯誤處理——
   看到「寫入失敗卻沒有拋例外」時不要「修好」它。
-- 驗證：`tests/test_schema.py`（欄位約束）。
+- 驗證：`tests/test_note_invariants.py::test_note008_oversized_summary_is_truncated_not_raised`
+  ——斷言超長 summary 被截斷、附省略號，且 `write()` 不拋例外。
+  另見 `tests/test_schema.py`（欄位約束）。
 
 ## NOTE-009：model 的 import 順序與「不得刪除未使用 import」
 
@@ -144,16 +159,27 @@
 
 ---
 
-## 待補測試（本次追認時發現的缺口）
+## 測試覆蓋現況
 
-以下決策**目前沒有對應測試**，代表它們可以被無聲改掉：
+**9 則 NOTE 全部有對應的可執行斷言。** 分佈如下：
 
-| NOTE | 缺什麼 |
+| NOTE | 測試位置 |
 |---|---|
-| NOTE-002 | 「兩種登入失敗訊息完全相同」無斷言 |
-| NOTE-005 | 「公開頁 GET 不產生寫入」無斷言 |
-| NOTE-007 | 「未設 salt 時 IP 欄為 null」「不接受固定弱 salt」無斷言 |
+| NOTE-001 | `tests/test_auth.py`（9 個 `?next=` 樣本） |
+| NOTE-002 | `tests/test_auth.py::test_ac02_unknown_user_and_wrong_password_are_indistinguishable` |
+| NOTE-003 | `tests/test_admin.py`、`tests/test_media.py` |
+| NOTE-004 | `tests/test_auth.py::test_ac01_unauthenticated_admin_redirects_to_login` |
+| NOTE-005 | `tests/test_note_invariants.py`（SQL 攔截） |
+| NOTE-006 | `tests/test_storage_backends.py`、`tests/test_config.py` |
+| NOTE-007 | `tests/test_note_invariants.py`（6 條） |
+| NOTE-008 | `tests/test_note_invariants.py` |
+| NOTE-009 | `tests/test_schema.py` |
 
-建議一併在 `tests/test_repo_integrity.py` 加入制度性檢查：
-程式中出現的每個 `NOTE(NOTE-NNN):` 都必須在本檔找得到同號條目，
-且本檔提到的每個測試路徑都必須存在——把「禁止失效引用」變成 CI 擋得住的規則。
+> **2026-08-18 更正**：本檔初版曾記載 NOTE-002「訊息一致性無專屬測試」，
+> 那是錯的——`test_ac02_unknown_user_and_wrong_password_are_indistinguishable`
+> 一直都在，且比預期更完整（連「不得出現『不存在』『查無』字樣」都驗了）。
+> 補測試前先查既有測試，不要憑印象認定沒有。
+
+制度性檢查已裝進 `tests/test_repo_integrity.py`：
+每個 `NOTE(NOTE-NNN):` 必須在本檔找得到同號條目、本檔每則條目必須有
+程式碼引用點、且檔頭 `驗證方式` 指到的測試函式必須真的存在。
