@@ -25,8 +25,12 @@ NTUST SiPh Lab - Admin Base Template
   2. 登出使用 POST + CSRF token（見 auth/routes.py 的說明）。
 
 已知限制與禁止事項：
-  1. 禁止在此加入 inline <script>（CSP 不允許）。
-  2. 禁止顯示密碼或 session 相關資訊。
+  1. 禁止 inline <script>（CSP 的 script-src 'self' 不允許）。
+     外部 JS 檔則是允許的 —— static/js/admin.js 即以
+     <script src defer> 載入。先前「因為 CSP 所以後台不能有 JS」
+     的推論並不成立，禁止的是 inline，不是 JS 本身。
+  2. 載入的 JS 必須是漸進增強：載入失敗時所有功能仍須可用。
+  3. 禁止顯示密碼或 session 相關資訊。
 
 Block：
   page_title  - 瀏覽器標題與 h1
@@ -178,9 +182,43 @@ Block：
       {% endif %}
       {% endwith %}
 
+      {# ---------- 驗證錯誤摘要 ----------
+         為什麼需要：設定頁與人物頁高達 7000px、逾 80 個欄位。
+         POST 失敗後瀏覽器會回到頁面頂端，而使用者按下儲存時
+         視線在底部的 sticky 動作列 —— 若錯誤欄位在頁面中段或
+         底部，畫面看起來與送出前「完全一樣」，使用者會以為存好了。
+
+         這個摘要固定出現在頂端，列出所有出錯欄位並以錨點直接
+         跳到該欄位（欄位 id 由 WTForms 產生，與 label 的 for 一致）。
+         不依賴 JS。 #}
+      {% if form is defined and form and form.errors %}
+      <div class="validation-panel validation-panel--blocked" role="alert"
+           id="form-error-summary" tabindex="-1">
+        <h2>尚未儲存，有 {{ form.errors | length }} 個欄位需要修正</h2>
+        <ul>
+          {% for field_name, messages in form.errors.items() %}
+          {% set field = form[field_name] if field_name in form else none %}
+          <li>
+            {% if field %}
+            <a href="#{{ field.id }}">{{ field.label.text }}</a>：
+            {% else %}
+            {{ field_name }}：
+            {% endif %}
+            {{ messages | join('；') }}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
       {% block content %}{% endblock %}
 
     </main>
   </div>
+
+  {# 按鈕狀態機：連點防護、送出中回饋、未儲存變更警告。
+     外部檔案 + defer，符合 script-src 'self'（禁止的是 inline，
+     不是 JS 本身）。採漸進增強：載入失敗時表單行為完全不變。 #}
+  <script src="{{ url_for('static', filename='js/admin.js') }}" defer></script>
 </body>
 </html>

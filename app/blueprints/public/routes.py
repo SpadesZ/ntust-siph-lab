@@ -48,7 +48,7 @@
 #   PUBLIC_BASE_URL, ROBOTS_POLICY, ENABLE_LLMS_TXT, STORAGE_BACKEND
 #
 # 資料庫使用方式：
-#   只讀。任何 GET 都不得產生寫入（SiteSetting.get() 的首次
+#   NOTE(NOTE-005)：只讀。任何 GET 都不得產生寫入（SiteSetting.get() 的首次
 #   建立除外，見該方法說明）。
 #
 # Error Handling / Fallback：
@@ -59,7 +59,7 @@
 #     （/healthz 為 Cloud Run 保留路徑，見該函式說明與 ADR-014）。
 #   - /llms.txt 在未啟用時回 404（避免提供空檔案）。
 #
-# 特殊機制（uploads 路由）：
+# 特殊機制（uploads 路由）—— NOTE(NOTE-006)：
 #   只有 STORAGE_BACKEND=local 時才註冊 /uploads/<path>。
 #   production 使用 GCS，媒體由 object storage 直接服務，
 #   應用程式不應該也不需要代理檔案（SAI §21.4）。

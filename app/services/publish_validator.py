@@ -76,7 +76,8 @@
 #
 # 驗證方式：
 #   pytest tests/test_publish_validator.py
-#   pytest tests/test_people.py::test_publish_requires_photo_alt
+#   pytest tests/test_people.py::test_ac12_photo_without_alt_blocks_publish
+#   pytest tests/test_people.py::test_ac12_photo_with_alt_allows_publish
 # ============================================================
 
 from __future__ import annotations

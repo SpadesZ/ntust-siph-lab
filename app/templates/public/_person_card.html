@@ -37,7 +37,8 @@ SAI §5.2 列表卡規格對照：
      （那是畢業生詳細頁的內容，且需 destination_public 為真）。
 
 驗證方式：
-  pytest tests/test_people.py::test_member_card_fields
+  pytest tests/test_people.py::test_ac04_published_member_appears_on_members_page
+  pytest tests/test_people.py::test_destination_hidden_unless_explicitly_public
 ============================================================
 #}
 {#
@@ -51,9 +52,12 @@ SAI §5.2 列表卡規格對照：
 {% set _title, _title_lang = localized(person, 'title') %}
 <article class="person-card">
   {% if person.photo_path %}
+  {# alt 走 localized()：英文版沒填時回退中文並標記真實語言（WCAG 3.1.2）。 #}
+  {% set _alt, _alt_lang = localized(person, 'photo_alt') %}
   <img class="person-card__photo"
        src="{{ media_url(person.photo_path) }}"
-       alt="{{ person.photo_alt_zh or (_name ~ ' ' ~ t('photo_suffix')) }}"
+       alt="{{ _alt or (_name ~ ' ' ~ t('photo_suffix')) }}"
+       {% if _alt %}lang="{{ _alt_lang }}"{% endif %}
        width="96" height="96" loading="lazy">
   {% else %}
   {# 佔位符不是資訊圖，以 aria-hidden 排除於無障礙樹之外 #}

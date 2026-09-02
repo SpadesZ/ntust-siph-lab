@@ -62,7 +62,7 @@
 #
 # 維護契約：
 #   1. 修改 _resolve 的逃逸防護時必須同步更新
-#      tests/test_storage_backends.py::test_path_traversal_rejected。
+#      tests/test_storage_backends.py::test_path_traversal_rejected_by_local_backend。
 #      這是防止任意檔案寫入的最後一道防線。
 #   2. 若改變 public_url 的路徑前綴，必須同步修改
 #      blueprints/public 的 uploads 路由與 nginx/CDN 設定。

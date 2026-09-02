@@ -90,23 +90,35 @@ def test_update_normalises_email(app):
         assert SiteSetting.get().contact_email == "yangcl@mail.ntust.edu.tw"
 
 
-def test_update_drops_invalid_email(app):
+def test_update_rejects_invalid_email(app):
     """非法 email 不得被存入。
 
-    service 層採「正規化為 None」而非拋錯 —— 使用者可見的錯誤訊息
-    由表單層負責（見 tests/test_admin_forms.py）。這裡驗證的是
-    「即使繞過表單，髒資料也進不了資料庫」這道防線。
+    service 層是「即使繞過表單，髒資料也進不了資料庫」這道防線；
+    使用者可見的錯誤訊息由表單層負責（見 tests/test_admin_forms.py）。
+
+    實作原本是「正規化為 None」，但那等於把非法輸入與「使用者
+    想清空」視為同一件事 —— 打錯一個字就會清掉原本正確的
+    聯絡信箱，且畫面仍回報成功。改為拒絕整筆並保留原值，
+    髒資料進不了資料庫這個性質不變（見下方斷言）。
     """
     with app.app_context():
-        SettingsService.update({"contact_email": "not-an-email"})
-        assert SiteSetting.get().contact_email is None
+        with pytest.raises(SettingsServiceError):
+            SettingsService.update({"contact_email": "not-an-email"})
+
+        assert SiteSetting.get().contact_email != "not-an-email", "髒資料不得進入資料庫"
 
 
-def test_update_drops_dangerous_url(app):
+def test_update_rejects_dangerous_url(app):
     """javascript: 這類 scheme 絕不能寫進資料庫。"""
     with app.app_context():
-        SettingsService.update({"map_url": "javascript:alert(1)"})
-        assert SiteSetting.get().map_url is None
+        SettingsService.update({"map_url": "https://maps.example.edu/lab"})
+
+        with pytest.raises(SettingsServiceError):
+            SettingsService.update({"map_url": "javascript:alert(1)"})
+
+        stored = SiteSetting.get().map_url
+        assert stored == "https://maps.example.edu/lab", "既有的安全網址不該被覆寫"
+        assert "javascript:" not in (stored or ""), "危險 scheme 絕不能寫進資料庫"
 
 
 def test_update_ignores_unknown_fields(app):

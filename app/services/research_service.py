@@ -114,6 +114,10 @@ logger = logging.getLogger(__name__)
 #: research_outputs.slug 欄位長度 VARCHAR(160)，保留後綴空間。
 _SLUG_MAX = 150
 
+#: 排序值留空時回到的預設，與 ResearchOutput.sort_order 的
+#: model default 一致；兩處不同會讓「清空後」與「新建時」排序不一樣。
+_DEFAULT_SORT_ORDER = 100
+
 
 class ResearchServiceError(RuntimeError):
     """業務規則違反；訊息可直接顯示給管理員。"""
@@ -241,16 +245,28 @@ class ResearchService:
             output.keywords = list(raw_keywords)
 
         output.hero_image_alt_zh = normalize_text(data.get("hero_image_alt_zh"))
-        output.hero_image_alt_en = normalize_text(data.get("hero_image_alt_en"))
+        # 理由同 PersonService 的 photo_alt_en：已不由表單維護，
+        # 無條件指派會在每次儲存時把既有資料清成 None。
+        if "hero_image_alt_en" in data:
+            output.hero_image_alt_en = normalize_text(data.get("hero_image_alt_en"))
 
-        if data.get("sort_order") is not None:
-            try:
-                output.sort_order = int(data["sort_order"])
-            except (TypeError, ValueError):
-                pass
+        if "sort_order" in data:
+            # 留空 -> 回到預設值（理由同 PersonService：
+            # 原本的 is not None 判斷讓「清空排序值」變成不可能）。
+            if data["sort_order"] in (None, ""):
+                output.sort_order = _DEFAULT_SORT_ORDER
+            else:
+                try:
+                    output.sort_order = int(data["sort_order"])
+                except (TypeError, ValueError):
+                    pass
 
-        output.seo_title_zh = normalize_text(data.get("seo_title_zh"))
-        output.seo_description_zh = normalize_text(data.get("seo_description_zh"))
+        # 理由同 PersonService：已不由表單維護，無條件指派會在
+        # 每次儲存時把既有值清成 None。
+        if "seo_title_zh" in data:
+            output.seo_title_zh = normalize_text(data.get("seo_title_zh"))
+        if "seo_description_zh" in data:
+            output.seo_description_zh = normalize_text(data.get("seo_description_zh"))
 
     @staticmethod
     def _commit(action_summary: str) -> None:
@@ -380,6 +396,82 @@ class ResearchService:
 
         ResearchService._commit(f"create research {output.slug}")
         return output
+
+    #: 複製成果時「不」沿用的欄位，以及各自的理由。
+    #:
+    #: publish_status  複製出來的一律是草稿，避免半成品直接上線
+    #: is_featured     精選是針對特定一篇的決定，不應被複製
+    #: slug            由標題重新產生並自動去重，不可共用
+    #: doi             DOI 是該篇論文的唯一識別碼，複製會造成
+    #:                 兩筆資料指向同一篇文獻（SAI §14.3 禁止不實出版資訊）
+    #: publication_date 新的一篇有自己的日期，沿用舊日期容易忘記改
+    #: hero_image_path 圖片檔在儲存空間中是共用的 object key，
+    #:                 兩筆資料共用同一個 key 會讓「移除其中一筆的圖」
+    #:                 把另一筆的圖也刪掉
+    _DUPLICATE_EXCLUDED = (
+        "publish_status",
+        "is_featured",
+        "slug",
+        "doi",
+        "publication_date",
+        "hero_image_path",
+    )
+
+    @staticmethod
+    def duplicate(
+        source: ResearchOutput,
+        admin_user_id: int | None = None,
+        ip_address: str | None = None,
+    ) -> ResearchOutput:
+        """以既有成果為範本建立一筆新草稿。
+
+        為什麼需要：同一個期刊/會議連續發表數篇時，venue、
+        關鍵字、作者群、四段式敘述的結構幾乎相同，
+        原本只能每次從零重打一遍。
+
+        刻意不沿用的欄位見 _DUPLICATE_EXCLUDED —— 其中 DOI 與
+        主圖特別重要：前者複製會產生兩筆指向同一篇文獻的資料，
+        後者共用 object key 會讓刪除其中一筆的圖連帶影響另一筆。
+        """
+        data = {
+            "output_type": source.output_type,
+            "year": source.year,
+            "title_zh": f"{source.title_zh}（複製）" if source.title_zh else None,
+            "title_en": f"{source.title_en} (copy)" if source.title_en else None,
+            "summary_zh": source.summary_zh,
+            "summary_en": source.summary_en,
+            "problem_zh": source.problem_zh,
+            "method_zh": source.method_zh,
+            "results_zh": source.results_zh,
+            "significance_zh": source.significance_zh,
+            "venue": source.venue,
+            "external_url": source.external_url,
+            "github_url": source.github_url,
+            "dataset_url": source.dataset_url,
+            "authors_display_text": source.authors_display_text,
+            "keywords": ", ".join(source.keywords),
+            "seo_title_zh": source.seo_title_zh,
+            "seo_description_zh": source.seo_description_zh,
+            "sort_order": source.sort_order,
+            # 作者順序照抄：person_links 已依 sort_order 排序。
+            "people": [
+                {"person_id": link.person_id, "role": link.contributor_role}
+                for link in source.person_links
+            ],
+        }
+
+        copy = ResearchService.create(data, admin_user_id=admin_user_id, ip_address=ip_address)
+
+        AuditLog.write(
+            action=AuditAction.CREATE,
+            entity_type="research_output",
+            entity_id=copy.id,
+            summary=f"複製自 {source.display_title}（{source.slug}）",
+            admin_user_id=admin_user_id,
+            ip_address=ip_address,
+        )
+        ResearchService._commit(f"duplicate research {copy.slug}")
+        return copy
 
     @staticmethod
     def update(

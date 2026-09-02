@@ -29,7 +29,6 @@ NTUST SiPh Lab - Admin Form Macros
 巨集清單：
   field(f, ...)        - 一般輸入（text/number/select/textarea/file）
   checkbox(f, ...)     - 核取方塊
-  multiselect(f, ...)  - 多選清單
   status_badge(status) - 發布狀態徽章
   confirm_button(...)  - 帶 CSRF 的單一動作 POST 表單
 
@@ -38,7 +37,8 @@ NTUST SiPh Lab - Admin Form Macros
   2. 禁止移除 aria-describedby 的關聯邏輯。
 
 驗證方式：
-  pytest tests/test_admin.py::test_form_fields_have_labels
+  pytest tests/test_a11y.py::test_ac16_admin_forms_have_associated_labels
+  pytest tests/test_a11y.py::test_ac16_required_fields_are_marked
   人工：螢幕閱讀器或瀏覽器 accessibility inspector
 ============================================================
 #}
@@ -105,21 +105,6 @@ NTUST SiPh Lab - Admin Form Macros
 {% endmacro %}
 
 
-{# 多選清單（成果的關聯成員）。 #}
-{% macro multiselect(f, size=8, full=true) %}
-<div class="form-field {% if full %}form-field--full{% endif %} {% if f.errors %}form-field--has-error{% endif %}">
-  {{ f.label(class='form-field__label') }}
-  {{ f(class='select', size=size, **{'aria-describedby': f.id ~ '-hint'} if f.description else {}) }}
-  {% if f.description %}
-  <p class="form-field__hint" id="{{ f.id }}-hint">{{ f.description }}</p>
-  {% endif %}
-  {% if f.errors %}
-  <p class="form-field__error" role="alert">{{ f.errors | join('；') }}</p>
-  {% endif %}
-</div>
-{% endmacro %}
-
-
 {#
   發布狀態徽章。
   文字 + 顏色雙重編碼（SAI §17：不以顏色作為唯一訊息）。
@@ -138,25 +123,129 @@ NTUST SiPh Lab - Admin Form Macros
     label  - 按鈕文字
     form   - ConfirmForm 實例（提供 CSRF token）
     css    - 按鈕樣式
-    confirm- 若提供，瀏覽器原生 confirm 對話框的訊息
 
   為什麼用 POST 而非連結：
     這些都是 state-changing 操作，必須有 CSRF token
     （SAI §11.1）。GET 連結可被第三方以 <img> 觸發。
 
-  confirm 使用 HTML 的 formnovalidate 無關；
-  這裡刻意不使用 JS confirm() —— CSP 禁止 inline script，
-  且 SAI §7.5/§7.6 的「確認」是以獨立表單或說明文字達成，
-  不依賴瀏覽器對話框。
+  關於「二次確認」：
+    不使用 JS confirm()（CSP 禁止 inline script，且原生對話框
+    無法呈現影響範圍）。破壞性操作的確認由 route 端以獨立的
+    確認頁完成 —— 見 routes.py::_needs_confirmation 與
+    templates/admin/_confirm_action.html。
+    本巨集只負責產生按鈕，不處理確認流程。
+
+  ★ 為什麼按鈕與 <form> 是分開的兩個巨集：
+    這個巨集常被放在 person_form / research_form / settings
+    的「圖片預覽」區塊裡，而那些區塊位於主表單 admin-form 之內。
+    HTML 不允許 <form> 巢狀：瀏覽器會丟棄內層的 <form> 開始標籤，
+    但照常執行 </form> 結束標籤 —— 結果是主表單被提前關閉。
+
+    實測後果（見 tests/test_admin_form_integrity.py）：
+      1. 「儲存變更」按鈕落在主表單外而失去 form owner，
+         依 HTML 規範點擊時「什麼都不會發生」。
+      2. 移除按鈕被主表單吸收，POST 到編輯端點而非刪除端點。
+      3. 排在圖片區塊之後的欄位（SEO、排序、精選）不會被送出。
+
+    因此改用 HTML5 的 form 屬性：按鈕留在版面原位，
+    但以 form="id" 指向一個放在主表單「之外」的表單。
+    視覺完全不變，巢狀問題根除。
+
+  使用方式（兩個巨集必須成對出現，form_id 要一致）：
+
+    在版面原位放按鈕：
+      confirm_button(url, '移除照片', confirm_form,
+                     'btn btn--danger', form_id='del-photo')
+
+    在主表單的 </form> 之後放送出目標：
+      confirm_form_target(url, confirm_form, 'del-photo')
+
+  上面刻意不用 Jinja 的變數／註解語法示範 —— Jinja 註解不可巢狀，
+  在 {# #} 區塊裡再寫一組 {# #} 會提前關閉外層註解，
+  使範例變成真正執行的程式碼並在載入時就報 undefined。
+
+  不指定 form_id 時（列表頁、主表單外的狀態操作區）維持原本
+  自成一體的寫法，呼叫端不需要改動。
 #}
-{% macro confirm_button(action, label, form, css='btn btn--secondary btn--small', extra_fields={}) %}
+{% macro confirm_button(action, label, form, css='btn btn--secondary btn--small', extra_fields={}, form_id=none) %}
+{% if form_id %}
+{# 在主表單內：只輸出按鈕，送出目標由 confirm_form_target 提供。
+   extra_fields 一併交給該巨集，不在這裡輸出（hidden input
+   若留在主表單內，會被主表單的送出一起帶上）。 #}
+<button class="{{ css }}" type="submit" form="{{ form_id }}">{{ label }}</button>
+{% else %}
+{# 不在主表單內時（列表頁、狀態操作區），維持自成一體的寫法。
+   csrf_token 的 id 由 action 推導，避免一頁多個表單時
+   出現重複的 id="csrf_token"（理由見 confirm_form_target）。 #}
+{% set token_id = 'csrf-' ~ (action | replace('/', '-') | replace('.', '-') | trim('-')) %}
 <form class="inline-form" method="post" action="{{ action }}">
-  {{ form.csrf_token }}
+  {# 理由同 confirm_form_target：CSRF 關閉時此屬性不存在。 #}
+  {% if form.csrf_token is defined %}{{ form.csrf_token(id=token_id) }}{% endif %}
   {% for name, value in extra_fields.items() %}
   <input type="hidden" name="{{ name }}" value="{{ value }}">
   {% endfor %}
   <button class="{{ css }}" type="submit">{{ label }}</button>
 </form>
+{% endif %}
+{% endmacro %}
+
+
+{#
+  confirm_button 的目標表單。必須輸出在主表單 <form> 之外。
+
+  參數：
+    action       - 目標 URL（要與對應的 confirm_button 相同）
+    form         - ConfirmForm 實例（提供 CSRF token）
+    form_id      - 與 confirm_button 的 form_id 一致
+    extra_fields - 額外的 hidden 欄位（例如精選狀態的 featured=1）
+
+  hidden 屬性讓它不佔版面 —— 它只是按鈕的送出目標，
+  本身沒有任何可見內容。
+
+  csrf_token 明確指定 id：WTForms 對每個表單的 token 都產生
+  id="csrf_token"，一頁有多個表單時會出現重複 id（實測一頁 4 個），
+  那是無效的 HTML，也會讓 document.getElementById 與
+  螢幕閱讀器的定位變得不可預期。
+#}
+{% macro confirm_form_target(action, form, form_id, extra_fields={}) %}
+<form id="{{ form_id }}" class="inline-form" method="post" action="{{ action }}" hidden>
+  {# csrf_token 在 WTF_CSRF_ENABLED=False 時（測試設定）根本不存在，
+     直接呼叫會拋 UndefinedError 讓整頁 500。 #}
+  {% if form.csrf_token is defined %}{{ form.csrf_token(id=form_id ~ '-csrf') }}{% endif %}
+  {% for name, value in extra_fields.items() %}
+  <input type="hidden" name="{{ name }}" value="{{ value }}">
+  {% endfor %}
+</form>
+{% endmacro %}
+
+
+{#
+  發布狀態快速篩選列（含筆數）。
+
+  參數：
+    endpoint - 目標 route（admin.people_list / admin.research_list）
+    counts   - {'published': n, 'draft': n, 'archived': n}
+    active   - 目前選取的 publish_status（None = 全部）
+    extra    - 要一併保留的其他 query 參數（篩選狀態不該被清掉）
+
+  為什麼需要：
+    封存後的項目在列表預設不顯示，而側選單沒有「已封存」入口 ——
+    實測時封存一筆資料後，第一直覺是「資料不見了」。
+    篩選功能本來就支援 publish_status=archived，缺的只是可見的入口。
+    順帶顯示筆數，讓管理者一眼看出有沒有被遺忘的草稿。
+#}
+{% macro status_filter_bar(endpoint, counts, active, extra={}) %}
+{% set total = counts.get('published', 0) + counts.get('draft', 0) + counts.get('archived', 0) %}
+<nav class="filter-chips" aria-label="發布狀態快速篩選">
+  <a class="btn btn--small {{ 'btn--primary' if not active else 'btn--ghost' }}"
+     href="{{ url_for(endpoint, **extra) }}"
+     {% if not active %}aria-current="page"{% endif %}>全部（{{ total }}）</a>
+  {% for value, label in [('published', '已發布'), ('draft', '草稿'), ('archived', '已封存')] %}
+  <a class="btn btn--small {{ 'btn--primary' if active == value else 'btn--ghost' }}"
+     href="{{ url_for(endpoint, publish_status=value, **extra) }}"
+     {% if active == value %}aria-current="page"{% endif %}>{{ label }}（{{ counts.get(value, 0) }}）</a>
+  {% endfor %}
+</nav>
 {% endmacro %}
 
 

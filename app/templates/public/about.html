@@ -33,7 +33,9 @@ Legacy 對照（SAI §22.3 Old -> New Mapping）：
   2. 每頁唯一 h1（AC-18）。
 
 驗證方式：
-  pytest tests/test_legacy_migration.py::test_professor_fields_visible
+  pytest tests/test_legacy_migration.py::test_ac23_professor_is_visible_on_public_site
+  pytest tests/test_legacy_migration.py::test_ac23_professor_fields_are_migrated_verbatim
+  pytest tests/test_people.py::test_faculty_appears_on_about_page
 ============================================================
 #}
 {% extends "public/base.html" %}
@@ -105,8 +107,11 @@ Legacy 對照（SAI §22.3 Old -> New Mapping）：
     <div class="split-panel">
       <div>
         {% if faculty.photo_path %}
+        {# alt 走 localized()：英文版沒填時回退中文並標記真實語言（WCAG 3.1.2）。 #}
+        {% set _fac_alt, _fac_alt_lang = localized(faculty, 'photo_alt') %}
         <img src="{{ media_url(faculty.photo_path) }}"
-             alt="{{ faculty.photo_alt_zh or (_fac_name ~ ' ' ~ t('photo_suffix')) }}"
+             alt="{{ _fac_alt or (_fac_name ~ ' ' ~ t('photo_suffix')) }}"
+             {% if _fac_alt %}lang="{{ _fac_alt_lang }}"{% endif %}
              width="320" height="384"
              style="width: 100%; max-width: 320px; border-radius: var(--radius-md); object-fit: cover;"
              loading="lazy">

@@ -115,6 +115,10 @@ logger = logging.getLogger(__name__)
 #: people.slug 欄位長度（VARCHAR(120)），保留後綴空間。
 _SLUG_MAX = 110
 
+#: 排序值留空時回到的預設，與 Person.sort_order 的 model default 一致。
+#: 兩處必須相同，否則「清空後」與「新建時」的排序會不一樣。
+_DEFAULT_SORT_ORDER = 100
+
 
 class PersonServiceError(RuntimeError):
     """業務規則違反；訊息可直接顯示給管理員。"""
@@ -233,21 +237,37 @@ class PersonService:
         person.external_url_label = normalize_text(data.get("external_url_label"))
 
         person.photo_alt_zh = normalize_text(data.get("photo_alt_zh"))
-        person.photo_alt_en = normalize_text(data.get("photo_alt_en"))
+        # photo_alt_en 已不由後台表單維護（公開模板一律讀 photo_alt_zh）。
+        # 只在呼叫端明確傳入時才寫入 —— 否則表單每次送出都會
+        # 因為 data 沒有這個 key 而把既有資料清成 None。
+        if "photo_alt_en" in data:
+            person.photo_alt_en = normalize_text(data.get("photo_alt_en"))
 
-        if data.get("sort_order") is not None:
-            try:
-                person.sort_order = int(data["sort_order"])
-            except (TypeError, ValueError):
-                # 保留原值而非拋錯：排序是次要欄位，
-                # 不應該讓整筆儲存失敗。
-                pass
+        if "sort_order" in data:
+            # 留空 -> 回到預設值 100。
+            # 原本的 `is not None` 判斷讓「清空排序值」變成不可能：
+            # 管理者清空欄位後儲存，看到的仍是舊數字，
+            # 只能改成別的數字而無法還原預設。
+            if data["sort_order"] in (None, ""):
+                person.sort_order = _DEFAULT_SORT_ORDER
+            else:
+                try:
+                    person.sort_order = int(data["sort_order"])
+                except (TypeError, ValueError):
+                    # 保留原值而非拋錯：排序是次要欄位，
+                    # 不應該讓整筆儲存失敗。
+                    pass
 
         if "is_featured" in data:
             person.is_featured = bool(data.get("is_featured"))
 
-        person.seo_title_zh = normalize_text(data.get("seo_title_zh"))
-        person.seo_description_zh = normalize_text(data.get("seo_description_zh"))
+        # SEO 覆寫欄位已不由後台表單維護（SEOService 的自動生成已足夠）。
+        # 只在呼叫端明確傳入時才寫入 —— 否則表單每次儲存都會因為
+        # data 沒有這些 key 而把既有值清成 None。
+        if "seo_title_zh" in data:
+            person.seo_title_zh = normalize_text(data.get("seo_title_zh"))
+        if "seo_description_zh" in data:
+            person.seo_description_zh = normalize_text(data.get("seo_description_zh"))
 
         # legacy 旗標：一旦補齊研究焦點就自動解除提醒。
         # 為什麼自動解除：這個旗標的唯一用途是「提醒補資料」，

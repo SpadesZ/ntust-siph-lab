@@ -22,6 +22,11 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
 多值欄位（研究主題 / 可驗證事實 / 外部連結）：
   以固定數量的空白列呈現（既有資料 + 3 列空白），
   由 SiteSettingForm.parse_repeated() 依索引解析。
+
+  渲染來源一律是 route 傳入的 repeats.*，不可直接讀 setting.*：
+  POST 驗證失敗時必須顯示「使用者剛送出的值」，
+  否則剛編輯好的列會悄悄還原成資料庫舊值而沒有任何提示
+  （見 routes.py::_repeat_context）。
   留空的列會被 SettingsService 的 _clean_* 過濾掉。
 
   為什麼用固定空白列而非 JS 動態新增：
@@ -32,15 +37,16 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
   1. 禁止在此存放任何 secret（SAI §8.9）。
   2. llms.txt 的說明文字必須明確標示為實驗性、非排名開關
      （SAI §13.2、§15.4）。
-  3. production_base_url 僅供紀錄，實際 canonical 由環境變數
-     決定（見 settings_service.py 的說明）。
+  3. 已從表單移除且刻意不復原的欄位：short_name（全站無人讀取）、
+     production_base_url（canonical 實際由環境變數決定，填了沒有效果）。
+     DB 欄位與既有資料保留，見 forms.py 的說明。
 
 驗證方式：
   pytest tests/test_settings.py
 ============================================================
 #}
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import field, checkbox, confirm_button %}
+{% from "admin/_macros.html" import field, checkbox, confirm_button, confirm_form_target %}
 
 {% block page_title %}網站設定{% endblock %}
 
@@ -66,7 +72,6 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
     <div class="form-grid">
       {{ field(form.lab_name_zh, required=true) }}
       {{ field(form.lab_name_en, required=true) }}
-      {{ field(form.short_name) }}
       {{ field(form.university_zh) }}
       {{ field(form.university_en) }}
       {{ field(form.department_zh) }}
@@ -82,7 +87,8 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
           <div style="margin-top: var(--space-3);">
             {{ confirm_button(
                 url_for('admin.settings_media_delete', field='logo_path'),
-                '移除 Logo', confirm_form, 'btn btn--danger btn--small') }}
+                '移除 Logo', confirm_form, 'btn btn--danger btn--small',
+                form_id='form-logo-delete') }}
           </div>
         </div>
       </div>
@@ -115,7 +121,8 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
           <div style="margin-top: var(--space-3);">
             {{ confirm_button(
                 url_for('admin.settings_media_delete', field='hero_media_path'),
-                '移除主視覺', confirm_form, 'btn btn--danger btn--small') }}
+                '移除主視覺', confirm_form, 'btn btn--danger btn--small',
+                form_id='form-hero-delete') }}
           </div>
         </div>
       </div>
@@ -137,7 +144,10 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
     </p>
 
     <div class="repeat-group">
-      {% set focus_items = setting.research_focus + [{}, {}, {}] %}
+      {# repeats.* 由 route 提供：POST 後是使用者剛送出的值，
+         GET 時才是資料庫既有值。直接讀 setting.* 會在驗證失敗時
+         把使用者剛填的內容悄悄還原（見 routes.py::_repeat_context）。 #}
+      {% set focus_items = repeats.research_focus + [{}, {}, {}] %}
       {% for item in focus_items %}
       <div class="repeat-row">
         <div class="form-field">
@@ -171,7 +181,7 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
     </p>
 
     <div class="repeat-group">
-      {% set proof_items = setting.lab_proof + [{}, {}, {}] %}
+      {% set proof_items = repeats.lab_proof + [{}, {}, {}] %}
       {% for item in proof_items %}
       <div class="repeat-row">
         <div class="form-field">
@@ -186,7 +196,7 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
         </div>
         <div class="form-field">
           <label class="form-field__label" for="proof-source-{{ loop.index0 }}">來源網址（選填）</label>
-          <input class="input" id="proof-source-{{ loop.index0 }}" type="url"
+          <input class="input" id="proof-source-{{ loop.index0 }}" type="text" inputmode="url"
                  name="lab_proof-source" value="{{ item.get('source', '') }}">
         </div>
       </div>
@@ -250,7 +260,7 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
     </div>
 
     <div class="repeat-group" style="margin-top: var(--space-5);">
-      {% set link_items = setting.social_links + [{}, {}] %}
+      {% set link_items = repeats.social_links + [{}, {}] %}
       {% for item in link_items %}
       <div class="repeat-row">
         <div class="form-field">
@@ -260,7 +270,7 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
         </div>
         <div class="form-field">
           <label class="form-field__label" for="link-url-{{ loop.index0 }}">網址</label>
-          <input class="input" id="link-url-{{ loop.index0 }}" type="url"
+          <input class="input" id="link-url-{{ loop.index0 }}" type="text" inputmode="url"
                  name="social_links-url" value="{{ item.get('url', '') }}">
         </div>
       </div>
@@ -277,7 +287,6 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
     </p>
     <div class="form-grid">
       {{ field(form.default_title_suffix) }}
-      {{ field(form.production_base_url) }}
       {{ field(form.default_description_zh, css='textarea', rows=2, full=true) }}
     </div>
 
@@ -290,7 +299,8 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
           <div style="margin-top: var(--space-3);">
             {{ confirm_button(
                 url_for('admin.settings_media_delete', field='og_image_path'),
-                '移除分享圖', confirm_form, 'btn btn--danger btn--small') }}
+                '移除分享圖', confirm_form, 'btn btn--danger btn--small',
+                form_id='form-og-delete') }}
           </div>
         </div>
       </div>
@@ -308,7 +318,6 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
       核心仍是高品質、可被抓取的網頁內容。
       啟用此選項不會提升搜尋排名，也不保證任何 AI 工具會引用本站。
     </p>
-    {{ checkbox(form.llms_txt_enabled, full=true) }}
     <p class="form-field__hint" style="margin-top: var(--space-3);">
       註：此開關還需要伺服器端的環境變數 <code>ENABLE_LLMS_TXT=true</code>
       才會實際生效，屬於雙重確認機制。
@@ -324,5 +333,24 @@ NTUST SiPh Lab - Admin Site Settings (/admin/settings)
     </span>
   </div>
 </form>
+
+{# ---------- 主表單之外的動作表單 ----------
+   必須放在 </form> 之後：<form> 不能巢狀，否則會提前關閉主表單
+   並讓「儲存設定」失效（見 _macros.html 的說明）。 #}
+{% if setting.logo_path %}
+{{ confirm_form_target(
+    url_for('admin.settings_media_delete', field='logo_path'),
+    confirm_form, 'form-logo-delete') }}
+{% endif %}
+{% if setting.hero_media_path %}
+{{ confirm_form_target(
+    url_for('admin.settings_media_delete', field='hero_media_path'),
+    confirm_form, 'form-hero-delete') }}
+{% endif %}
+{% if setting.og_image_path %}
+{{ confirm_form_target(
+    url_for('admin.settings_media_delete', field='og_image_path'),
+    confirm_form, 'form-og-delete') }}
+{% endif %}
 
 {% endblock %}

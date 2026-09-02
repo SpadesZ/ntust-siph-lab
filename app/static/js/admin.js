@@ -1,0 +1,213 @@
+/* ============================================================
+ * NTUST SiPh Lab - Admin 按鈕狀態機
+ *
+ * 上下游：
+ *   templates/admin/base.html -> <script src defer> -> 本檔
+ *   本檔只操作既有 DOM，不產生內容、不發 request
+ *
+ * 檔案路徑：
+ *   app/static/js/admin.js
+ *
+ * 建立日期：2026-09-01
+ * 版本：v1.0
+ *
+ * 模組定位與責任邊界：
+ *   補上伺服器端無法提供的三件事：
+ *     1. 連點防護（避免同一個動作送出多次）
+ *     2. 送出中的視覺回饋（8 MB 上傳時畫面原本完全靜止）
+ *     3. 未儲存變更的離開警告（80 欄位長表單誤按上一頁 = 全部重來）
+ *
+ *   責任邊界（不得做的事）：
+ *     - 不得成為功能的必要條件：這是漸進增強，JS 未載入時
+ *       所有表單行為必須與現在完全相同。
+ *     - 不得在此做欄位驗證：驗證的唯一真相在伺服器端
+ *       （前端驗證只會產生「前後標準不一致」的困惑）。
+ *     - 不得攔截或改寫送出的資料。
+ *
+ * 為什麼可以有 JS（推翻先前的專案假設）：
+ *   原本的判斷是「CSP 禁止 script 所以後台不能有 JS」。
+ *   實際政策是 script-src 'self'（見 app/__init__.py），
+ *   它禁止的是 inline script，外部 JS 檔完全允許。
+ *   因此本檔以 <script src> 載入，不含任何 inline 程式碼。
+ *
+ * 特殊機制（為什麼不用 button.disabled 擋連點）：
+ *   被 disabled 的 submit button，其 name/value 不會隨表單送出。
+ *   若某個表單依賴按鈕值來判斷動作（例如 featured=0/1），
+ *   直接 disable 會改變 payload 而送出錯誤的意圖。
+ *   因此改以「表單層旗標 + 攔截後續 submit 事件」達成，
+ *   視覺上的 disabled 延後到下一個 tick 才套用。
+ *
+ * 特殊機制（送出鎖必須有解鎖路徑）：
+ *   鎖住表單是為了擋連點，但「鎖了就沒人解」會變成更嚴重的問題：
+ *   請求失敗時使用者停在原頁，按鈕永遠寫著「處理中…」，
+ *   表單再也送不出去，除非他自己想到按 F5。
+ *
+ *   這在本專案不是理論風險。deploy/service.yaml 設定
+ *   minScale=0（沒流量就縮到零）且 timeoutSeconds=60，
+ *   研究室網站長期閒置 —— 管理者每次登入幾乎都是冷啟動，
+ *   冷啟動加上 8 MB 照片的縮放處理有機會撞上 60 秒上限。
+ *
+ *   因此提供兩條解鎖路徑：
+ *     1. pageshow（persisted）：從 bfcache 返回本頁時解鎖。
+ *     2. 逾時看門狗：超過 UNLOCK_AFTER_MS 仍停在原頁就解鎖。
+ *   兩者都只還原 UI 狀態，不重送請求 —— 是否重試由使用者決定。
+ *
+ * 已知限制：
+ *   1. beforeunload 的提示文字由瀏覽器決定，無法自訂。
+ *   2. 看門狗無法區分「請求失敗」與「請求極慢但仍會成功」。
+ *      解鎖只是讓按鈕可再次點擊；重複送出的最終防線仍是
+ *      伺服器端的 PRG 與各 route 的狀態檢查。
+ *
+ * 驗證方式：
+ *   pytest tests/test_admin_progressive_enhancement.py
+ *   人工：連點儲存鍵，觀察只送出一次且按鈕顯示「儲存中…」
+ *   人工：送出後按上一頁返回，按鈕必須恢復成可點擊
+ * ============================================================ */
+
+(function () {
+  "use strict";
+
+  /** 超過這個時間仍停在原頁，視為請求失敗並解鎖（見檔頭）。
+   *  60000 對齊 Cloud Run 的 timeoutSeconds，再加 5 秒緩衝。 */
+  var UNLOCK_AFTER_MS = 65000;
+
+  /**
+   * 表單的所有送出按鈕。
+   *
+   * 除了表單內的按鈕，也要包含以 form="id" 指過來的外部按鈕 ——
+   * 「移除照片」「移除主圖」這類按鈕位在主表單的版面裡，
+   * 送出目標卻是另一個表單（見 _macros.html 的 confirm_button）。
+   * 只查 form.querySelectorAll 會完全找不到它們，
+   * 結果是最需要回饋的破壞性操作反而點下去畫面全無反應。
+   */
+  function submitButtonsOf(form) {
+    var inside = form.querySelectorAll('button[type="submit"]');
+    var outside = form.id
+      ? document.querySelectorAll('button[form="' + form.id + '"]')
+      : [];
+    return Array.prototype.concat.apply([], [
+      Array.prototype.slice.call(inside),
+      Array.prototype.slice.call(outside),
+    ]);
+  }
+
+  /** 解除送出鎖並還原按鈕外觀。只動 UI，不重送請求。 */
+  function unlock(form) {
+    if (form.dataset.submitting !== "1") {
+      return;
+    }
+    form.dataset.submitting = "";
+
+    submitButtonsOf(form).forEach(function (button) {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+      if (button.dataset.originalLabel) {
+        button.textContent = button.dataset.originalLabel;
+      }
+    });
+  }
+
+  /** 表單送出後鎖住，避免連點造成重複請求。 */
+  function guardAgainstDoubleSubmit(form) {
+    form.addEventListener("submit", function (event) {
+      if (form.dataset.submitting === "1") {
+        event.preventDefault();
+        return;
+      }
+      form.dataset.submitting = "1";
+
+      submitButtonsOf(form).forEach(function (button) {
+        button.dataset.originalLabel = button.textContent;
+        // data-busy-label 可由模板指定更貼切的字（例如「發布中…」）。
+        button.textContent = button.dataset.busyLabel || "處理中…";
+        button.setAttribute("aria-busy", "true");
+        // 延後到下一個 tick 才 disable：確保按鈕的 name/value
+        // 已經進入送出的 payload（見檔頭「特殊機制」）。
+        window.setTimeout(function () {
+          button.disabled = true;
+        }, 0);
+      });
+
+      // 看門狗：請求失敗而使用者仍停在原頁時，把表單還給他。
+      window.setTimeout(function () {
+        unlock(form);
+      }, UNLOCK_AFTER_MS);
+    });
+  }
+
+  /** 記錄初始值，離開前若有未儲存變更則警告。 */
+  function warnOnUnsavedChanges(form) {
+    var initial = new FormData(form);
+
+    function hasChanges() {
+      // 檔案欄位要單獨判斷：FormData 取出的是 File 物件，
+      // join 之後一律變成 "[object File]"，前後永遠相等 ——
+      // 也就是「選了照片但還沒儲存就離開」不會有任何警告。
+      var filePicked = Array.prototype.some.call(
+        form.querySelectorAll('input[type="file"]'),
+        function (input) {
+          return input.files && input.files.length > 0;
+        }
+      );
+      if (filePicked) {
+        return true;
+      }
+
+      var current = new FormData(form);
+      var keys = new Set();
+      initial.forEach(function (_value, key) {
+        keys.add(key);
+      });
+      current.forEach(function (_value, key) {
+        keys.add(key);
+      });
+
+      var changed = false;
+      keys.forEach(function (key) {
+        if (changed || key === "csrf_token") {
+          return;
+        }
+        var before = initial.getAll(key).join("\u0000");
+        var after = current.getAll(key).join("\u0000");
+        if (before !== after) {
+          changed = true;
+        }
+      });
+      return changed;
+    }
+
+    window.addEventListener("beforeunload", function (event) {
+      // 正在送出的表單不算「未儲存」。
+      if (form.dataset.submitting === "1") {
+        return;
+      }
+      if (!hasChanges()) {
+        return;
+      }
+      event.preventDefault();
+      // 舊版瀏覽器需要設定 returnValue 才會顯示提示。
+      event.returnValue = "";
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    // 主表單：連點防護 + 未儲存警告。
+    document.querySelectorAll("form.admin-form").forEach(function (form) {
+      guardAgainstDoubleSubmit(form);
+      warnOnUnsavedChanges(form);
+    });
+
+    // 動作表單（發布 / 封存 / 移除圖片 / 登出）：只需連點防護。
+    // 它們沒有使用者輸入，不需要未儲存警告。
+    document.querySelectorAll("form.inline-form").forEach(guardAgainstDoubleSubmit);
+  });
+
+  // 從 bfcache 返回本頁（送出後按上一頁、或請求失敗後退回）時解鎖。
+  // 沒有這段，按鈕會永遠停在「處理中…」而表單再也送不出去。
+  window.addEventListener("pageshow", function (event) {
+    if (!event.persisted) {
+      return;
+    }
+    document.querySelectorAll("form.admin-form, form.inline-form").forEach(unlock);
+  });
+})();

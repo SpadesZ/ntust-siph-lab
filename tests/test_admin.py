@@ -133,8 +133,14 @@ def test_person_unpublish_removes_from_public(logged_in_client, client, sample_p
 
 
 def test_person_archive_hides_but_keeps_data(logged_in_client, client, app, sample_person):
-    """archive 後前台隱藏但資料保留（SAI §7.6 預設不硬刪）。"""
-    response = logged_in_client.post(f"/admin/people/{sample_person['id']}/archive")
+    """archive 後前台隱藏但資料保留（SAI §7.6 預設不硬刪）。
+
+    confirmed=1 是二次確認的第二段；不帶它只會得到確認頁
+    （見 tests/test_admin_feedback.py::test_archive_requires_confirmation）。
+    """
+    response = logged_in_client.post(
+        f"/admin/people/{sample_person['id']}/archive", data={"confirmed": "1"}
+    )
     assert response.status_code == 302
     assert sample_person["name_zh"] not in client.get("/members").get_data(as_text=True)
 
@@ -165,12 +171,16 @@ def test_ac06_graduate_via_http_route(logged_in_client, client, app, sample_pers
     service 層已有測試，但 route 的表單解析、驗證與 redirect
     原本完全沒有被驗證過。
     """
+    # 欄位帶 graduate- 前綴：GraduateForm 與 PersonForm 有同名欄位
+    # （graduation_year / degree / thesis_title_zh）且渲染在同一頁，
+    # 不加前綴會產生重複 id，讓「轉為畢業生」區塊的 label
+    # 指到上方主表單的輸入框（見 forms.GRADUATE_FORM_PREFIX）。
     response = logged_in_client.post(
         f"/admin/people/{sample_person['id']}/graduate",
         data={
-            "graduation_year": "2026",
-            "degree": "M.S.",
-            "thesis_title_zh": "矽光子微環諧振器之光通道效能監視研究",
+            "graduate-graduation_year": "2026",
+            "graduate-degree": "M.S.",
+            "graduate-thesis_title_zh": "矽光子微環諧振器之光通道效能監視研究",
         },
     )
     assert response.status_code == 302, "graduate route 應以 PRG 導回"
@@ -200,7 +210,7 @@ def test_ac06_graduate_via_http_route(logged_in_client, client, app, sample_pers
 def test_graduate_missing_year_keeps_status(app, logged_in_client, sample_person):
     """缺畢業年度時不得變更狀態（驗證失敗必須是原子的）。"""
     logged_in_client.post(
-        f"/admin/people/{sample_person['id']}/graduate", data={"degree": "M.S."}
+        f"/admin/people/{sample_person['id']}/graduate", data={"graduate-degree": "M.S."}
     )
 
     from app.extensions import db
@@ -226,8 +236,9 @@ def test_research_unpublish_and_archive(logged_in_client, client, app, sample_ou
     ).status_code == 302
     assert client.get(f"/research/{sample_output['slug']}").status_code == 404
 
+    # confirmed=1：archive 為破壞性操作，第一次 POST 只會得到確認頁。
     assert logged_in_client.post(
-        f"/admin/research/{sample_output['id']}/archive"
+        f"/admin/research/{sample_output['id']}/archive", data={"confirmed": "1"}
     ).status_code == 302
 
     from app.extensions import db
@@ -308,7 +319,11 @@ def test_person_photo_upload_then_delete(logged_in_client, app, sample_person):
         assert person.photo_path, "上傳後應記錄 object key"
         stored_key = person.photo_path
 
-    delete = logged_in_client.post(f"/admin/people/{sample_person['id']}/photo/delete")
+    # confirmed=1：移除照片為破壞性操作（檔案刪除無法復原），
+    # 第一次 POST 只會得到確認頁。
+    delete = logged_in_client.post(
+        f"/admin/people/{sample_person['id']}/photo/delete", data={"confirmed": "1"}
+    )
     assert delete.status_code == 302
 
     with app.app_context():

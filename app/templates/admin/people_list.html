@@ -28,11 +28,13 @@ NTUST SiPh Lab - Admin People List (/admin/people)
      不造成 body 橫向捲動（AC-15）。
 
 驗證方式：
-  pytest tests/test_admin.py::test_people_list_filters
+  pytest tests/test_admin.py::test_admin_pages_render  （參數含 /admin/people）
+  pytest tests/test_a11y.py::test_tables_scroll_inside_container_not_body
+  註：列表的篩選行為目前「沒有自動測試」，修改篩選邏輯須人工複驗。
 ============================================================
 #}
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import status_badge %}
+{% from "admin/_macros.html" import status_badge, status_filter_bar %}
 
 {% block page_title %}研究成員{% endblock %}
 
@@ -48,6 +50,10 @@ NTUST SiPh Lab - Admin People List (/admin/people)
 {% endblock %}
 
 {% block content %}
+
+{# ---------- 發布狀態快速篩選（含「已封存」入口） ---------- #}
+{{ status_filter_bar('admin.people_list', publish_counts, active_publish_status,
+                     {'status': active_status} if active_status else {}) }}
 
 {# ---------- 篩選與搜尋 ---------- #}
 <form class="filter-bar" method="get" action="{{ url_for('admin.people_list') }}"

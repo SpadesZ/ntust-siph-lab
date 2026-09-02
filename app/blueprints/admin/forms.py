@@ -93,7 +93,6 @@ from wtforms import (
     IntegerField,
     PasswordField,
     SelectField,
-    SelectMultipleField,
     StringField,
     SubmitField,
     TextAreaField,
@@ -103,6 +102,67 @@ from wtforms.validators import DataRequired, EqualTo, Length, NumberRange, Optio
 from app.models.mixins import ContributorRole, OutputType, PersonStatus, PublishStatus
 from app.models.research_output import ResearchOutput
 from app.utils.validators import is_valid_email, is_valid_url
+
+
+def _strip(value):
+    """WTForms filter：送進驗證器之前先去掉前後空白。
+
+    為什麼需要：
+      瀏覽器的 HTML5 required 只檢查「非空字串」，因此
+      「   」（純空白）會通過前端驗證並送出，
+      再由伺服器端的 DataRequired（會 strip）判定失敗。
+
+      結果是使用者填了看起來有東西的欄位卻被退回，
+      而且送出前完全沒有提示。加上這個 filter 之後，
+      表單層與瀏覽器對「有沒有填」的判斷一致，
+      同時也讓所有欄位的前後空白不會進到資料庫。
+    """
+    return value.strip() if isinstance(value, str) else value
+
+
+class AdminForm(FlaskForm):
+    """後台表單共同基底：把 WTForms 的內建訊息切換為繁體中文。
+
+    為什麼需要：
+      整個後台介面是繁體中文，但只有 4 個欄位帶了 message=，
+      其餘約 44 個 Length / NumberRange / DataRequired 都會落回
+      WTForms 的英文預設值 —— 使用者實際看到的是
+      「This field is required.」夾在一片中文裡。
+
+      逐欄位補 message= 需要改四十多處，且日後新增欄位一定會漏。
+      改用 WTForms 內建的 locale 機制，一次覆蓋全部驗證器，
+      新欄位自動適用。
+
+    為什麼不是設在 app 層級：
+      這是後台表單的呈現語言，與公開站的 i18n（app/i18n.py）
+      是不同的關注點；公開站不使用 WTForms。
+    """
+
+    class Meta:
+        #: WTForms 內建 zh_TW 與 zh 翻譯檔；找不到對應字串時
+        #: 自動回落英文，不會因缺翻譯而讓表單壞掉。
+        locales = ["zh_TW", "zh"]
+
+        def bind_field(self, form, unbound_field, options):
+            """統一為所有文字欄位加上 strip filter（見 _strip）。
+
+            為什麼在這裡做而不是逐欄位加 filters=：
+              後台超過 80 個欄位，逐一加不但改動巨大，
+              日後新增欄位也一定會漏 —— 而漏掉的症狀
+              （空白字元繞過必填）不會有任何明顯跡象。
+
+            PasswordField 明確排除：密碼的前後空白是使用者
+            實際輸入的一部分，擅自去掉會讓既有密碼登入失敗。
+            """
+            if not isinstance(unbound_field.field_class, type) or not issubclass(
+                unbound_field.field_class, PasswordField
+            ):
+                filters = list(unbound_field.kwargs.get("filters", ()))
+                if _strip not in filters:
+                    filters.append(_strip)
+                unbound_field.kwargs["filters"] = filters
+
+            return unbound_field.bind(form=form, **options)
 
 
 class SafeUrl:
@@ -150,6 +210,34 @@ class SafeEmail:
             raise ValidationError(self.message)
 
 
+class IsoDate:
+    """日期必須是實際存在的 YYYY-MM-DD（SAI §8.4 publication_date）。
+
+    為什麼需要：
+      publication_date 在表單層原本只有 Length(max=10)，
+      `2025-13-45`、`abcdefghij` 都會通過，然後在
+      ResearchService._parse_publication_date 被靜默轉成 None ——
+      管理者看到欄位變空白，卻沒有任何錯誤訊息，
+      與 SafeUrl docstring 描述的是同一種缺陷。
+
+      年份錯誤在學術網站的代價很高（引用資訊會錯），
+      因此寧可擋下來要求更正，也不要默默丟掉。
+    """
+
+    def __init__(self, message: str | None = None) -> None:
+        self.message = message or "日期格式須為 YYYY-MM-DD，且必須是實際存在的日期。"
+
+    def __call__(self, form, field) -> None:
+        if not field.data:
+            return
+        from datetime import date as _date
+
+        try:
+            _date.fromisoformat(str(field.data).strip())
+        except ValueError as exc:
+            raise ValidationError(self.message) from exc
+
+
 class NormalisableDoi:
     """DOI 必須可被正規化為裸 DOI（SAI §15.2「DOI 格式 normalization」）。
 
@@ -188,7 +276,7 @@ _IMAGE_MESSAGE = "只允許 jpg / jpeg / png / webp 圖片（SAI §16）。"
 _IMAGE_ACCEPT = ",".join(f".{ext}" for ext in _IMAGE_EXTENSIONS)
 
 
-class ConfirmForm(FlaskForm):
+class ConfirmForm(AdminForm):
     """僅含 CSRF token 的確認表單。
 
     用於發布、取消發布、封存、精選、刪除照片等「不需要輸入
@@ -198,7 +286,7 @@ class ConfirmForm(FlaskForm):
     submit = SubmitField("確認")
 
 
-class PersonForm(FlaskForm):
+class PersonForm(AdminForm):
     """人物新增/編輯表單（SAI §15.1、§15.3）。"""
 
     # --- Identity ---
@@ -286,13 +374,17 @@ class PersonForm(FlaskForm):
         validators=[Optional(), Length(max=200)],
         description="有照片時為必填（SAI §16、AC-12）。",
     )
-    photo_alt_en = StringField("照片替代文字（英）", validators=[Optional(), Length(max=200)])
+    photo_alt_en = StringField(
+        "照片替代文字（英）",
+        validators=[Optional(), Length(max=200)],
+        description="選填。留空時英文版會沿用中文版並標記為中文（WCAG 3.1.2）。",
+    )
 
     # --- SEO ---
-    seo_title_zh = StringField("SEO 標題覆寫", validators=[Optional(), Length(max=180)])
-    seo_description_zh = TextAreaField(
-        "SEO 描述覆寫", validators=[Optional(), Length(max=320)]
-    )
+    # seo_title_zh / seo_description_zh 已從表單移除：
+    # 14 筆實際資料（5 位成員 + 9 篇成果）全部沒有填過，
+    # 而 SEOService 由姓名與研究焦點自動生成的標題與描述已足夠。
+    # 保留 DB 欄位與既有資料，SEOService 仍優先採用（若日後有值）。
 
     # --- Ordering ---
     sort_order = IntegerField("排序值", validators=[Optional(), NumberRange(min=0, max=99999)])
@@ -337,8 +429,6 @@ class PersonForm(FlaskForm):
             "external_url_label": self.external_url_label.data,
             "photo_alt_zh": self.photo_alt_zh.data,
             "photo_alt_en": self.photo_alt_en.data,
-            "seo_title_zh": self.seo_title_zh.data,
-            "seo_description_zh": self.seo_description_zh.data,
             "sort_order": self.sort_order.data,
             "is_featured": self.is_featured.data,
         }
@@ -378,14 +468,30 @@ class PersonForm(FlaskForm):
         self.external_url_label.data = person.external_url_label
         self.photo_alt_zh.data = person.photo_alt_zh
         self.photo_alt_en.data = person.photo_alt_en
-        self.seo_title_zh.data = person.seo_title_zh
-        self.seo_description_zh.data = person.seo_description_zh
         self.sort_order.data = person.sort_order
         self.is_featured.data = person.is_featured
 
 
-class GraduateForm(FlaskForm):
-    """在學轉畢業表單（SAI §7.5 的確認視窗）。"""
+#: GraduateForm 的欄位前綴。
+#:
+#: 為什麼需要：GraduateForm 的 graduation_year / degree /
+#: thesis_title_zh 與 PersonForm 同名，而兩份表單渲染在同一頁上。
+#: WTForms 以欄位名產生 id，因此頁面會出現重複的 id ——
+#: 那不只是 HTML 無效，更直接的後果是「轉為畢業生」區塊裡的
+#: <label for="degree"> 會指到上方主表單的欄位，
+#: 點標籤時游標跳到錯誤的輸入框。
+#:
+#: 加上 prefix 後 name 與 id 都變成 graduate-*，衝突消失。
+#: 注意：render 與讀取 POST 兩邊都必須帶同一個 prefix，
+#: 否則會變成「填了但讀不到」。
+GRADUATE_FORM_PREFIX = "graduate"
+
+
+class GraduateForm(AdminForm):
+    """在學轉畢業表單（SAI §7.5 的確認視窗）。
+
+    實例化時必須帶 prefix=GRADUATE_FORM_PREFIX（見該常數說明）。
+    """
 
     graduation_year = IntegerField(
         "畢業年度 *",
@@ -400,7 +506,7 @@ class GraduateForm(FlaskForm):
     submit = SubmitField("確認轉為畢業生")
 
 
-class ResearchForm(FlaskForm):
+class ResearchForm(AdminForm):
     """研究成果新增/編輯表單（SAI §15.2）。"""
 
     # --- Identity ---
@@ -415,8 +521,9 @@ class ResearchForm(FlaskForm):
     )
     publication_date = StringField(
         "出版日期",
-        validators=[Optional(), Length(max=10)],
+        validators=[Optional(), Length(max=10), IsoDate()],
         description="格式 YYYY-MM-DD，有正式日期時填寫。",
+        render_kw={"placeholder": "2025-03-14"},
     )
     title_zh = TextAreaField("標題（中）", validators=[Optional()])
     title_en = TextAreaField("標題（英）", validators=[Optional()])
@@ -461,12 +568,9 @@ class ResearchForm(FlaskForm):
     )
 
     # --- People & keywords ---
-    people = SelectMultipleField(
-        "關聯 Lab 成員",
-        coerce=int,
-        validators=[Optional()],
-        description="按住 Ctrl/Cmd 可多選；選取順序不影響，作者順序依清單順序。",
-    )
+    #
+    # 關聯成員不再使用 SelectMultipleField（見 parse_author_orders）。
+    # 由 route 解析 author_order-<person_id> 後注入 to_dict 的結果。
     keywords = StringField(
         "研究關鍵字", validators=[Optional()], description="以逗號分隔，中英文皆可。"
     )
@@ -482,11 +586,14 @@ class ResearchForm(FlaskForm):
         validators=[Optional(), Length(max=220)],
         description="有主圖時為必填（SAI §16、AC-12）。",
     )
-    hero_image_alt_en = StringField("主圖替代文字（英）", validators=[Optional(), Length(max=220)])
+    hero_image_alt_en = StringField(
+        "主圖替代文字（英）",
+        validators=[Optional(), Length(max=220)],
+        description="選填。留空時英文版會沿用中文版並標記為中文（WCAG 3.1.2）。",
+    )
 
     # --- SEO & ordering ---
-    seo_title_zh = StringField("SEO 標題覆寫", validators=[Optional(), Length(max=180)])
-    seo_description_zh = TextAreaField("SEO 描述覆寫", validators=[Optional(), Length(max=320)])
+    # seo_title_zh / seo_description_zh 已從表單移除（理由同 PersonForm）。
     sort_order = IntegerField("排序值", validators=[Optional(), NumberRange(min=0, max=99999)])
 
     submit = SubmitField("儲存")
@@ -512,17 +619,100 @@ class ResearchForm(FlaskForm):
             "github_url": self.github_url.data,
             "dataset_url": self.dataset_url.data,
             "authors_display_text": self.authors_display_text.data,
-            "people": [
-                {"person_id": pid, "role": ContributorRole.AUTHOR}
-                for pid in (self.people.data or [])
-            ],
+            # people 不在此產生：作者順序由 route 以
+            # parse_author_orders() 解析後注入（見該方法的說明）。
             "keywords": self.keywords.data,
             "hero_image_alt_zh": self.hero_image_alt_zh.data,
             "hero_image_alt_en": self.hero_image_alt_en.data,
-            "seo_title_zh": self.seo_title_zh.data,
-            "seo_description_zh": self.seo_description_zh.data,
             "sort_order": self.sort_order.data,
         }
+
+    @staticmethod
+    def parse_author_orders(
+        form_data, valid_person_ids, names: dict[int, str] | None = None
+    ) -> tuple[list[dict], list[str]]:
+        """解析每位成員的作者順序輸入。
+
+        表單命名為 `author_order-<person_id>`：留空代表不列入，
+        填數字代表列入並以該數字排序（1 = 第一作者）。
+
+        為什麼不用 SelectMultipleField（原本的做法）：
+          多選清單送出的順序是「選項在 DOM 中的順序」，也就是
+          _person_choices() 的排列（人物的 sort_order），
+          與管理者點選的順序無關。而 sync_people 以清單順序
+          寫入 sort_order，前台的 public_lab_people 又照它顯示 ——
+          結果是「論文的作者順序 = 這些人在成員頁的排序值」，
+          且在成果頁完全無法調整。對學術網站來說，
+          第一作者與通訊作者的順序是不能錯的。
+
+        為什麼以 person_id 為 key 而非依索引對齊：
+          parse_repeated 那種依索引對齊的做法有個隱性前提 ——
+          每一列的每個欄位都必須送出。以 id 為 key 完全不受
+          「某個輸入沒送出」影響，不會發生 A 的順序配到 B 身上。
+
+        ★ 錯誤訊息必須說出「這位成員不會被列入」：
+          無法解析的順序值會讓該成員整個被跳過，而 sync_people
+          是以「傳入的清單」為準 —— 也就是說原本掛在這篇成果上的
+          作者，會因為順序欄打錯一個字而被解除關聯。
+          只說「不是數字」的訊息會讓管理者以為那一欄沒生效而已，
+          不會意識到作者列已經少了一個人。學術網站上這個代價很高。
+
+        Args:
+            names: {person_id: 姓名}，用於產生指名道姓的錯誤訊息。
+                   未提供時退回以編號描述（不影響解析行為）。
+
+        Returns:
+            (entries, errors)
+            entries 已依順序排好，可直接交給 ResearchService.sync_people。
+        """
+        entries: list[dict] = []
+        errors: list[str] = []
+        names = names or {}
+
+        def _who(person_id: int) -> str:
+            return f"「{names[person_id]}」" if person_id in names else f"成員 #{person_id}"
+
+        for person_id in valid_person_ids:
+            raw = (form_data.get(f"author_order-{person_id}") or "").strip()
+            if not raw:
+                continue  # 留空 = 不列入這筆成果
+
+            try:
+                order = int(raw)
+            except ValueError:
+                errors.append(
+                    f"{_who(person_id)} 的順序「{raw}」不是數字，"
+                    f"這次儲存不會把{_who(person_id)}列入作者。"
+                    "請填 1 以上的整數後重新儲存。"
+                )
+                continue
+
+            if order < 1:
+                errors.append(
+                    f"{_who(person_id)} 的順序「{raw}」必須是 1 以上的整數，"
+                    f"這次儲存不會把{_who(person_id)}列入作者。"
+                )
+                continue
+
+            entries.append(
+                {
+                    "person_id": person_id,
+                    "role": ContributorRole.AUTHOR,
+                    "author_order": order,
+                }
+            )
+
+        # 相同順序值時以 person_id 決定先後，確保結果穩定可預期。
+        entries.sort(key=lambda e: (e["author_order"], e["person_id"]))
+
+        orders = [e["author_order"] for e in entries]
+        if len(set(orders)) != len(orders):
+            errors.append(
+                "有多位成員填了相同的順序值，系統已依成員編號決定先後；"
+                "建議改為不重複的數字以免順序不如預期。"
+            )
+
+        return entries, errors
 
     def load_from(self, output) -> None:
         """把既有成果資料填入表單（編輯頁 GET）。"""
@@ -546,16 +736,14 @@ class ResearchForm(FlaskForm):
         self.github_url.data = output.github_url
         self.dataset_url.data = output.dataset_url
         self.authors_display_text.data = output.authors_display_text
-        self.people.data = [link.person_id for link in output.person_links]
+        # 作者順序不經由 form 欄位，由 template 直接讀 output.person_links。
         self.keywords.data = ", ".join(output.keywords)
         self.hero_image_alt_zh.data = output.hero_image_alt_zh
         self.hero_image_alt_en.data = output.hero_image_alt_en
-        self.seo_title_zh.data = output.seo_title_zh
-        self.seo_description_zh.data = output.seo_description_zh
         self.sort_order.data = output.sort_order
 
 
-class SiteSettingForm(FlaskForm):
+class SiteSettingForm(AdminForm):
     """網站設定表單（SAI §15.4 的六個 tab）。
 
     研究主題 / 可驗證事實 / 外部連結三組可變長度資料
@@ -570,7 +758,9 @@ class SiteSettingForm(FlaskForm):
     lab_name_en = StringField(
         "研究室名稱（英）*", validators=[DataRequired(), Length(max=200)]
     )
-    short_name = StringField("簡稱", validators=[Optional(), Length(max=80)])
+    # short_name 已從表單移除：全專案沒有任何地方讀取它
+    # （公開模板、SEO、結構化資料皆使用 lab_name_zh / lab_name_en）。
+    # 保留 DB 欄位與既有資料。
     department_zh = StringField("系所（中）", validators=[Optional(), Length(max=160)])
     department_en = StringField("系所（英）", validators=[Optional(), Length(max=200)])
     university_zh = StringField("學校（中）", validators=[Optional(), Length(max=160)])
@@ -601,14 +791,25 @@ class SiteSettingForm(FlaskForm):
     about_methods_zh = TextAreaField("研究方法與設備概覽", validators=[Optional()])
 
     # --- Join & Contact ---
-    contact_email = StringField("聯絡 Email", validators=[Optional(), Length(max=200)])
+    #: 這些欄位在 service 層都會經過 normalize_email / normalize_url，
+    #: 非法值會被轉成 None 而「覆寫掉原本正確的資料」。
+    #: 因此表單層必須先擋下來（理由同 SafeUrl 的 docstring）——
+    #: 少了 SafeEmail，打錯一個字就會把研究室對外的聯絡信箱清空，
+    #: 而畫面仍顯示「已更新網站設定」。
+    contact_email = StringField(
+        "聯絡 Email",
+        validators=[Optional(), Length(max=200), SafeEmail()],
+        render_kw={"type": "email"},
+    )
     address_zh = TextAreaField("地址（中）", validators=[Optional()])
     address_en = TextAreaField("地址（英）", validators=[Optional()])
-    map_url = StringField("地圖連結", validators=[Optional(), Length(max=500)])
+    map_url = StringField("地圖連結", validators=[Optional(), Length(max=500), SafeUrl()])
     join_title_zh = StringField("招募標題", validators=[Optional(), Length(max=200)])
     join_body_zh = TextAreaField("招募內容", validators=[Optional()])
     join_cta_label_zh = StringField("招募按鈕文字", validators=[Optional(), Length(max=120)])
-    join_cta_url = StringField("招募按鈕連結", validators=[Optional(), Length(max=500)])
+    join_cta_url = StringField(
+        "招募按鈕連結", validators=[Optional(), Length(max=500), SafeUrl()]
+    )
 
     # --- SEO defaults ---
     default_title_suffix = StringField(
@@ -623,24 +824,28 @@ class SiteSettingForm(FlaskForm):
         validators=[Optional(), FileAllowed(_IMAGE_EXTENSIONS, _IMAGE_MESSAGE)],
         render_kw={"accept": _IMAGE_ACCEPT},
     )
-    production_base_url = StringField(
-        "正式網域紀錄", validators=[Optional(), Length(max=255)],
-        description="僅供紀錄；實際 canonical 由伺服器環境變數 PUBLIC_BASE_URL 決定。",
-    )
+    # production_base_url 已從表單移除：它的說明本來就寫著
+    # 「僅供紀錄；實際 canonical 由環境變數 PUBLIC_BASE_URL 決定」——
+    # 也就是填了不會有任何效果，卻讓管理者以為改了它就會改網域。
+    # 保留 DB 欄位與既有資料。
 
     # --- External identity ---
     official_ntust_url = StringField(
-        "NTUST 官方頁連結", validators=[Optional(), Length(max=500)]
+        "NTUST 官方頁連結", validators=[Optional(), Length(max=500), SafeUrl()]
     )
 
     # --- Advanced ---
-    llms_txt_enabled = BooleanField(
-        "啟用 /llms.txt（實驗性相容層）",
-        description=(
-            "這是給部分 AI 檢索工具的實驗性檔案，"
-            "並非 Google 排名的必要條件，也不保證任何排名效果（SAI §13.2）。"
-        ),
-    )
+    # llms_txt_enabled 已從表單移除。
+    #
+    # 這個開關實際上要兩個條件同時成立才生效：這裡打勾，
+    # 而且伺服器端要設 ENABLE_LLMS_TXT=true。也就是說在後台
+    # 勾了它，多數情況下什麼事都不會發生 —— 而欄位說明本身就寫著
+    # 「並非 Google 排名的必要條件，也不保證任何排名效果」。
+    #
+    # 一個「勾了通常沒作用、而且官方說明不需要」的開關，
+    # 放在後台只會讓管理者困惑。需要啟用時改環境變數即可，
+    # 那本來就是部署層的決定（SAI §13.2）。
+    # DB 欄位與既有值保留，SettingsService 仍接受明確傳入。
 
     submit = SubmitField("儲存設定")
 
@@ -649,7 +854,6 @@ class SiteSettingForm(FlaskForm):
         return {
             "lab_name_zh": self.lab_name_zh.data,
             "lab_name_en": self.lab_name_en.data,
-            "short_name": self.short_name.data,
             "department_zh": self.department_zh.data,
             "department_en": self.department_en.data,
             "university_zh": self.university_zh.data,
@@ -672,16 +876,13 @@ class SiteSettingForm(FlaskForm):
             "join_cta_url": self.join_cta_url.data,
             "default_title_suffix": self.default_title_suffix.data,
             "default_description_zh": self.default_description_zh.data,
-            "production_base_url": self.production_base_url.data,
             "official_ntust_url": self.official_ntust_url.data,
-            "llms_txt_enabled": self.llms_txt_enabled.data,
         }
 
     def load_from(self, setting) -> None:
         """把既有設定填入表單。"""
         self.lab_name_zh.data = setting.lab_name_zh
         self.lab_name_en.data = setting.lab_name_en
-        self.short_name.data = setting.short_name
         self.department_zh.data = setting.department_zh
         self.department_en.data = setting.department_en
         self.university_zh.data = setting.university_zh
@@ -704,9 +905,7 @@ class SiteSettingForm(FlaskForm):
         self.join_cta_url.data = setting.join_cta_url
         self.default_title_suffix.data = setting.default_title_suffix
         self.default_description_zh.data = setting.default_description_zh
-        self.production_base_url.data = setting.production_base_url
         self.official_ntust_url.data = setting.official_ntust_url
-        self.llms_txt_enabled.data = setting.llms_txt_enabled
 
     @staticmethod
     def parse_repeated(form_data, keys: list[str], prefix: str) -> list[dict]:
@@ -729,8 +928,35 @@ class SiteSettingForm(FlaskForm):
           純 HTML 表單新增列時不需要 JS 就能運作
           （SAI §6.3 禁止「hover 才出現唯一操作」的精神延伸：
           功能不應該完全依賴 JS）。
+
+        ★ 索引對齊的隱性前提（務必遵守）：
+          「每一列的每個欄位都必須送出，即使是空值。」
+          text/url 這類 input 空值也會送出，因此成立。
+
+          但 checkbox 未勾選時「完全不會出現在 POST 裡」。
+          只要有人在 repeat row 加一個 checkbox，該欄位的
+          list 就會比其他欄位短，從那一列開始所有欄位橫向錯位 ——
+          A 的網址會配到 B 的名稱上，而且不會有任何錯誤，
+          資料就這樣靜靜地錯了。
+
+          因此在下方明確檢查各欄位長度是否一致，不一致就拋錯，
+          讓問題在開發期就爆出來而不是變成髒資料。
+          若真的需要 checkbox，請改用 hidden + checkbox 配對送值，
+          或改以 id 為 key（見 ResearchForm.parse_author_orders）。
+
+        Raises:
+            ValueError: 各欄位送出的數量不一致（見上）。
         """
         columns = {key: form_data.getlist(f"{prefix}-{key}") for key in keys}
+
+        lengths = {key: len(values) for key, values in columns.items()}
+        if len(set(lengths.values())) > 1:
+            raise ValueError(
+                f"{prefix} 的重複欄位長度不一致：{lengths}。"
+                "repeat row 內不得使用 checkbox 或任何『未選取就不送出』的控制項，"
+                "否則欄位會橫向錯位（見 parse_repeated 的說明）。"
+            )
+
         length = max((len(values) for values in columns.values()), default=0)
 
         records: list[dict] = []
@@ -743,7 +969,7 @@ class SiteSettingForm(FlaskForm):
         return records
 
 
-class ChangePasswordForm(FlaskForm):
+class ChangePasswordForm(AdminForm):
     """修改管理員密碼（SAI §7.3 System 選單）。
 
     要求輸入舊密碼：這是「已登入使用者主動修改」的情境，

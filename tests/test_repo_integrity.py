@@ -2,7 +2,14 @@
 # NTUST SiPh Lab - Repository Integrity Tests
 #
 # 檔案路徑：tests/test_repo_integrity.py
-# 建立日期：2026-08-15 / 版本：v1.0
+# 建立日期：2026-08-15
+# 最後重大修改：2026-08-18（新增第 6、7 節：函式層級引用與 NOTE 閉環）
+# 版本：v1.1
+#
+# 功能說明：
+#   把「文件與註解的完整性」寫成可執行的斷言。逐一檢查：規格要求的
+#   檔案是否都在、註解裡引用的路徑與測試函式是否真的存在、
+#   ADR 與 NOTE 的編號是否都查得到對應條目。任何一項不成立就讓 CI 失敗。
 #
 # 模組定位（SAI §9.4 目錄樹、§23.1 維護契約）：
 #   本專案的檔頭註解規範要求每支程式都寫出「驗證方式」與
@@ -16,8 +23,12 @@
 #
 # 涵蓋：
 #   1. SAI §9.4 目錄樹要求的檔案全部存在
-#   2. 程式碼與文件中引用的專案路徑全部存在
+#   2. 程式碼與文件中引用的專案路徑全部存在（檔案層級）
 #   3. pytest.ini 宣告的 marker 全部有被使用
+#   4. app/ 實作模組具備檔頭區塊
+#   5. ADR 引用完整性（SAI 只到 ADR-011，其後一律走 docs/adr/）
+#   6. `tests/x.py::test_y` 引用精確到函式層級（2026-08-18 新增）
+#   7. NOTE 制度雙向閉環：標記有條目、條目有引用（2026-08-18 新增）
 #
 # 為什麼把「文件完整性」當測試：
 #   §9.4 的目錄樹是規格的一部分，不是建議。把它變成可執行的
@@ -307,4 +318,126 @@ def test_referenced_adrs_exist_in_docs_adr():
     assert not missing, (
         "以下 ADR 被引用但 docs/adr/ 沒有對應檔案："
         + ", ".join(f"ADR-{n:03d}" for n in missing)
+    )
+
+
+# ----------------------------------------------------------------------
+# 6. 測試引用必須精確到函式（2026-08-18 稽核）
+# ----------------------------------------------------------------------
+# 背景：本檔第 2 節早已擋住「檔案不存在」的引用，但只驗到檔案層級。
+# 2026-08-18 稽核以 `檔案::函式` 為單位重驗，發現 32 個引用中有 22 個
+# 指向不存在的測試函式（69%）——例如 app/models/__init__.py 寫
+# `test_schema.py::test_all_tables_present`，實際函式叫
+# `test_all_core_tables_present`。
+#
+# 這類引用比沒有引用更糟：它讓維護者以為某個行為有測試保護，實際上沒有。
+_TEST_REF_PATTERN = re.compile(r"(tests/[\w/]+\.py)::(\w+)")
+
+#: 稽核報告會逐條列出「當時壞掉的引用」作為歷史紀錄，
+#: 那是刻意保留的證據，不是本次的缺陷，故排除。
+_REF_CHECK_EXEMPT = ("header-note-audit-",)
+
+
+def _test_function_index() -> dict[str, set[str]]:
+    """建立 {測試檔相對路徑: {測試函式名}} 索引。"""
+    index: dict[str, set[str]] = {}
+    for path in (PROJECT_ROOT / "tests").rglob("test_*.py"):
+        if "__pycache__" in path.parts:
+            continue
+        names = set(re.findall(
+            r"^\s*(?:async\s+)?def (test_\w+)",
+            path.read_text(encoding="utf-8", errors="replace"),
+            re.M,
+        ))
+        index[path.relative_to(PROJECT_ROOT).as_posix()] = names
+    return index
+
+
+def test_no_dangling_test_function_references():
+    """`檔案::函式` 形式的引用必須連函式一起存在。"""
+    index = _test_function_index()
+    offenders = []
+
+    for path in _scannable_files():
+        if path.name == "test_repo_integrity.py":
+            continue  # 本檔的說明文字本身含這個樣式
+        if any(tag in path.name for tag in _REF_CHECK_EXEMPT):
+            continue
+        content = path.read_text(encoding="utf-8", errors="replace")
+        for match in _TEST_REF_PATTERN.finditer(content):
+            test_file, func = match.group(1), match.group(2)
+            lineno = content[: match.start()].count("\n") + 1
+            where = f"{path.relative_to(PROJECT_ROOT)}:{lineno}"
+            if test_file not in index:
+                offenders.append(f"{where}  ->  {test_file}（測試檔不存在）")
+            elif func not in index[test_file]:
+                offenders.append(f"{where}  ->  {test_file}::{func}（測試函式不存在）")
+
+    assert not offenders, (
+        "以下引用指向不存在的測試函式（會讓人誤以為該行為有測試保護）：\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+# ----------------------------------------------------------------------
+# 7. NOTE 制度閉環（2026-08-18 建立）
+# ----------------------------------------------------------------------
+# 規則（docs/NOTES.md 開頭）：程式中的 `NOTE(NOTE-NNN):` 必須能在
+# docs/NOTES.md 找到同號條目；若行為改變，需同步更新決策、測試與引用處，
+# 禁止留下失效 reference。
+#
+# 本節同時檢查反方向：NOTES.md 有條目卻沒有任何程式碼引用，
+# 代表那則決策已經與實作脫節（可能實作被刪了而 NOTE 沒清）。
+_NOTE_MARKER_PATTERN = re.compile(r"NOTE\((NOTE-\d{3})\)")
+_NOTE_ENTRY_PATTERN = re.compile(r"^##\s*(NOTE-\d{3})", re.M)
+
+
+def _notes_document() -> str:
+    notes_path = PROJECT_ROOT / "docs" / "NOTES.md"
+    assert notes_path.is_file(), "docs/NOTES.md 不存在，NOTE 制度無處可查"
+    return notes_path.read_text(encoding="utf-8")
+
+
+def _note_markers_in_code() -> dict[str, set[str]]:
+    """建立 {NOTE 編號: {出現的檔案}}。"""
+    found: dict[str, set[str]] = {}
+    for path in _scannable_files():
+        if path.name in {"test_repo_integrity.py", "NOTES.md"}:
+            continue
+        if any(tag in path.name for tag in _REF_CHECK_EXEMPT):
+            continue
+        for note in _NOTE_MARKER_PATTERN.findall(
+            path.read_text(encoding="utf-8", errors="replace")
+        ):
+            found.setdefault(note, set()).add(
+                str(path.relative_to(PROJECT_ROOT))
+            )
+    return found
+
+
+def test_every_note_marker_has_an_entry():
+    """程式中的每個 NOTE(NOTE-NNN) 都必須在 docs/NOTES.md 有同號條目。"""
+    entries = set(_NOTE_ENTRY_PATTERN.findall(_notes_document()))
+    markers = _note_markers_in_code()
+
+    orphans = {
+        note: sorted(files) for note, files in markers.items() if note not in entries
+    }
+    report = "\n  ".join(f"{n}  <- {', '.join(f)}" for n, f in sorted(orphans.items()))
+    assert not orphans, f"以下 NOTE 標記在 docs/NOTES.md 查無條目：\n  {report}"
+
+
+def test_every_note_entry_is_referenced_in_code():
+    """docs/NOTES.md 的每則 NOTE 都必須有程式碼引用點。
+
+    沒有引用點的條目代表決策與實作脫節——可能實作已被移除、
+    或當初就沒把標記打回程式碼，兩種情況都讓 NOTE 失去作用。
+    """
+    entries = set(_NOTE_ENTRY_PATTERN.findall(_notes_document()))
+    markers = set(_note_markers_in_code())
+
+    unused = sorted(entries - markers)
+    assert not unused, (
+        "以下 NOTE 條目沒有任何程式碼引用（決策與實作已脫節）："
+        + ", ".join(unused)
     )

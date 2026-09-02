@@ -23,7 +23,9 @@ policy=private 的用途：
      login_required + CSRF + session（SAI §7.1）。
 
 驗證方式：
-  pytest tests/test_seo.py::test_robots_disallows_admin
+  pytest tests/test_seo.py::test_robots_disallows_admin_and_points_to_sitemap
+  pytest tests/test_seo.py::test_robots_private_policy_blocks_everything
+  pytest tests/test_seo.py::test_robots_does_not_block_uploads
 ============================================================
 -#}
 {% if policy == 'private' %}
