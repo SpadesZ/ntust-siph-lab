@@ -1,8 +1,8 @@
 # NTUST SiPh Lab — 上線交接文件（HANDOFF）
 
 > **檔案路徑**：`docs/HANDOFF.md`
-> **建立日期**：2026-08-17　**最後更新**：2026-09-02　**版本**：v1.1
-> **對應部署**：Cloud Run revision `ntust-siph-lab-00004-cod`
+> **建立日期**：2026-08-17　**最後更新**：2026-09-03　**版本**：v1.2
+> **對應部署**：Cloud Run revision `ntust-siph-lab-00006-duc`
 >
 > 這份文件寫給「下一個接手的人或 AI」。目標是讓你**不必重讀整段對話**
 > 就能維護這個站台。所有數字都是實測值，不是規劃值。
@@ -24,6 +24,8 @@
 | 舊站 Google Sites | 🟢 仍在線（刻意保留，等簽核） |
 | 部署分支合併進 main | ✅ 已合併 |
 | **後台表單修復（`fix/admin-form-integrity`）** | ✅ **已於 2026-09-02 部署上線** — 見 §10.2 |
+| **前端修正 + OG 分享圖（`fix/header-breakpoint-and-og-image`）** | ✅ **已於 2026-09-03 部署上線** — 見 §10.3 |
+| 生產後台的「系所」欄位 | ⚠️ **仍為空，需人工補填** — 見 §10.3 結尾 |
 
 ---
 
@@ -251,7 +253,9 @@ gcloud run deploy ntust-siph-lab --image=$IMG --region=asia-east1 `
   --no-traffic --tag=candidate --project=ntust-siph-lab
 
 # 4) 對 candidate 網址跑 smoke test（網址會由上一步印出）
-.\.venv\Scripts\python.exe scripts\smoke_cloud.py "https://candidate---ntust-siph-lab-zuwnb72d7q-de.a.run.app"
+#    --candidate 必加：canonical 與 sitemap 指向正式網域才是對的，
+#    加了旗標它們才會標成 SKIP 而不是 FAIL。
+.\.venv\Scripts\python.exe scripts\smoke_cloud.py "https://candidate---ntust-siph-lab-zuwnb72d7q-de.a.run.app" --candidate
 
 # 5) 通過後才切流量
 gcloud run services update-traffic ntust-siph-lab --region=asia-east1 `
@@ -546,7 +550,15 @@ Flask-WTF 對 HTTPS 的 POST 會做 strict referer 檢查。
 | 正式站 smoke | **24/25**，與部署前基準逐項相同 |
 | `flask db upgrade` | **未執行**（零 schema 變更，revision 仍為 `16bde59ce22f`） |
 
-### ⚠️ candidate 網址的正確預期是 22/25，不是 24/25
+> **2026-09-03 更新：本節描述的判讀負擔已由工具解決。**
+> `smoke_cloud.py` v1.1 修正了兩件事：robots 檢查現在接受
+> `ROBOTS_POLICY=private` 的全站 `Disallow: /`（它涵蓋且嚴於
+> `/admin`），新增的 `--candidate` 旗標會把 canonical / sitemap
+> 兩項標為 SKIP。現在正式站是 **25/25**、candidate 是
+> **23/23 + 2 SKIP**，兩者都不再需要人工排除假失敗。
+> 以下保留原始紀錄，作為當時判讀依據。
+
+### ⚠️（已由 v1.1 修正）candidate 網址的正確預期是 22/25，不是 24/25
 
 §7.6 把「canonical/sitemap 指向本站網域」寫成一列，但在
 `scripts/smoke_cloud.py` 裡那是**兩個獨立檢查**（canonical 主機、sitemap
@@ -573,3 +585,48 @@ Flask-WTF 對 HTTPS 的 POST 會做 strict referer 檢查。
 3. 模板中「儲存變更」位於主表單 `</form>` 之前，動作表單全在其後。
 
 → 最終確認仍須人工在瀏覽器操作一次。
+
+---
+
+## 10.3 部署紀錄（2026-09-03，`fix/header-breakpoint-and-og-image` 上線）
+
+PR #2 合併後依 §5 流程部署。內容為三處前端視覺修正與全站預設 OG 分享圖。
+
+| 階段 | 結果 |
+| --- | --- |
+| 本機測試 gate | **914 passed, 3 skipped**（skip 為未設 `TEST_POSTGRES_URL`） |
+| 建置 | Cloud Build `9d31c5d4-fa39-40ea-82ed-8a444b2c3a57`，SUCCESS，1m24s |
+| 映像 | tag `1731497`，digest `sha256:d869a7fc12fab1d87286a165c3689bb843b57d534a224d545bdd499322f7d8de` |
+| candidate 部署 | `ntust-siph-lab-00006-duc`，`--no-traffic` |
+| candidate smoke | **22/25**，失敗項恰為 §10.2 所列三項（當時腳本尚未修正） |
+| 切流量 | `--to-latest`，100% → `00006-duc` |
+| 正式站 smoke | **24/25**，與 2026-09-02 基準逐項相同 |
+| `flask db upgrade` | **未執行**（零 schema 變更，revision 仍為 `16bde59ce22f`） |
+
+### 線上驗證（部署後實測）
+
+| 項目 | 結果 |
+| --- | --- |
+| `og:image` | `https://<正式網域>/static/img/og-default.png` — 8 個公開頁全部輸出 |
+| OG 圖片本身 | HTTP 200、52486 bytes、`image/png`，與本機產物一致 |
+| `site-footer__heading--brand` | 已上線，footer 顯示 `NTUST SiPh Lab`（不再是 `SIPH`） |
+| `min-height: 38px` | 已上線，語言切換與導覽連結等高 |
+
+### 同批修正的工具問題
+
+正式站 smoke 印出「部署未通過」但實際上與基準相同，這個假警報在
+每次 staging 部署都會出現。已於本次一併修正 `smoke_cloud.py`（v1.1，
+見 §10.2 開頭的更新說明）。修正後對同一個正式站重跑得到 **25/25**。
+
+### 尚未完成
+
+**生產資料庫的 `department` 仍為空**。分享圖上有「先進半導體科技研究所」
+（PNG 由本機已填妥的資料產生），但線上頁面的 hero 與 footer 沒有 ——
+`instance/` 不在版控，本機填的值不會隨部署帶上去。
+需要在 `/admin` → 設定 補填：
+
+- 系所（中）：先進半導體科技研究所
+- 系所（英）：Graduate Institute of Advanced Semiconductor Technology
+
+英文名依據台科大官網英文新聞稿（2024-12 成立，以 silicon photonics 為
+重點方向）。填完後 hero eyebrow 會顯示「國立臺灣科技大學 · 先進半導體科技研究所」。

@@ -10,8 +10,8 @@
 #   scripts/smoke_cloud.py
 #
 # 建立日期：2026-08-15
-# 最後重大修改：2026-08-15
-# 版本：v1.0
+# 最後重大修改：2026-09-03（robots 檢查支援 private 模式、新增 --candidate）
+# 版本：v1.1
 #
 # 模組定位與責任邊界：
 #   SAI §21.4 明定「每次 deployment 後執行 /healthz、首頁、人物頁、
@@ -28,11 +28,21 @@
 # 輸入 -> 處理 -> 輸出 Pipeline：
 #   base URL
 #     -> 逐項檢查（健康、公開頁、SEO、安全、Admin 保護）
-#     -> 逐行輸出 PASS/FAIL
-#     -> 任一 FAIL -> exit code 1
+#     -> 逐行輸出 PASS/FAIL/SKIP
+#     -> 任一 FAIL -> exit code 1（SKIP 不影響 exit code）
 #
 # 主要 Function：
-#   run_smoke(base_url) - 執行全部檢查並回傳結果
+#   run_smoke(base_url, candidate=False) - 執行全部檢查並回傳結果
+#
+# --candidate 旗標：
+#   對 candidate 標籤網址測試時必須加上。canonical 與 sitemap 一律
+#   指向 PUBLIC_BASE_URL 宣告的正式網域，因此在 candidate 網址上，
+#   「與請求網域一致」這個比對必然失敗 —— 而那正是它們正確運作的
+#   證明。加了旗標，這兩項標為 SKIP 而非 FAIL。
+#
+#   沒有這個旗標之前，candidate 的正確結果是 22/25、正式站是 24/25，
+#   要判讀就得先知道哪三個 FAIL 是假的（HANDOFF §10.2 為此寫了
+#   一整段說明）。工具不該要求使用者記住哪些失敗可以忽略。
 #
 # 依賴套件：
 #   requests
@@ -102,17 +112,31 @@ class Result:
 
     def __init__(self) -> None:
         self.rows: list[tuple[str, bool, str]] = []
+        self.skipped: list[tuple[str, str]] = []
 
     def add(self, name: str, ok: bool, detail: str = "") -> None:
         self.rows.append((name, ok, detail))
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f" — {detail}" if detail else ""))
+
+    def skip(self, name: str, reason: str) -> None:
+        """標記為「不適用於當前測試對象」，不計入通過率。
+
+        存在的理由：canonical 與 sitemap 必須指向 PUBLIC_BASE_URL 宣告的
+        正式網域，因此對 candidate 標籤網址測試時，這兩項「必然」失敗 ——
+        而那正是它們正確運作的證明。把必然的失敗記成 FAIL，等於要求
+        每個部署的人都先知道「哪幾個 FAIL 可以忽略」才能判讀結果。
+        """
+        self.skipped.append((name, reason))
+        print(f"[SKIP] {name} — {reason}")
 
     @property
     def failed(self) -> int:
         return sum(1 for _, ok, _ in self.rows if not ok)
 
 
-def run_smoke(base_url: str, allow_insecure: bool = False) -> Result:
+def run_smoke(
+    base_url: str, allow_insecure: bool = False, candidate: bool = False
+) -> Result:
     base = base_url.rstrip("/")
     result = Result()
     session = requests.Session()
@@ -152,29 +176,56 @@ def run_smoke(base_url: str, allow_insecure: bool = False) -> Result:
     if canonical:
         canon_host = urlparse(canonical.group(1)).netloc
         # 見檔頭「為什麼檢查 canonical 主機」。
-        result.add(
-            "canonical 指向本站網域（PUBLIC_BASE_URL 已正確設定）",
-            canon_host == parsed.netloc,
-            f"canonical={canon_host}、實際={parsed.netloc}",
-        )
+        if candidate:
+            result.skip(
+                "canonical 指向本站網域（PUBLIC_BASE_URL 已正確設定）",
+                f"candidate 網址；canonical 指向正式站 {canon_host} 才是對的",
+            )
+        else:
+            result.add(
+                "canonical 指向本站網域（PUBLIC_BASE_URL 已正確設定）",
+                canon_host == parsed.netloc,
+                f"canonical={canon_host}、實際={parsed.netloc}",
+            )
 
     result.add("首頁有 meta description", 'name="description"' in html)
     result.add("首頁恰好一個 H1", len(re.findall(r"<h1\b", html)) == 1,
                f"{len(re.findall(r'<h1\b', html))} 個")
 
-    for path, needle, label in (
-        ("/robots.txt", "Disallow: /admin", "robots.txt 禁止 /admin"),
-        ("/sitemap.xml", "<urlset", "sitemap.xml 格式正確"),
-    ):
-        r = session.get(f"{base}{path}", timeout=20)
-        result.add(label, r.status_code == 200 and needle in r.text,
-                   f"HTTP {r.status_code}")
+    # robots.txt：/admin 必須被爬蟲排除。
+    #
+    # 兩種輸出都算通過，因為兩種都達成了目的：
+    #   ROBOTS_POLICY=public  -> 逐條 Disallow，其中包含 /admin
+    #   ROBOTS_POLICY=private -> 全站 Disallow: /（涵蓋 /admin，且更嚴格）
+    #
+    # 原本是字面比對 "Disallow: /admin"，於是 private 模式下必然 FAIL ——
+    # 儘管那時的實際防護比 public 模式更嚴。內容簽核完成前本站一直是
+    # private，因此「每一次」部署都會看到這個假警報，還得回頭查
+    # HANDOFF §10.2 才能確認可以忽略。工具不該要求使用者記住
+    # 哪些失敗是假的。
+    r = session.get(f"{base}/robots.txt", timeout=20)
+    disallows = re.findall(r"(?im)^\s*Disallow:\s*(\S*)", r.text)
+    admin_excluded = any(d == "/" or d.startswith("/admin") for d in disallows)
+    result.add(
+        "robots.txt 排除 /admin",
+        r.status_code == 200 and admin_excluded,
+        f"HTTP {r.status_code}、Disallow={disallows or '無'}",
+    )
 
-    sitemap = session.get(f"{base}/sitemap.xml", timeout=20).text
-    locs = re.findall(r"<loc>([^<]+)</loc>", sitemap)
+    r = session.get(f"{base}/sitemap.xml", timeout=20)
+    result.add("sitemap.xml 格式正確", r.status_code == 200 and "<urlset" in r.text,
+               f"HTTP {r.status_code}")
+
+    locs = re.findall(r"<loc>([^<]+)</loc>", r.text)
     bad_locs = [l for l in locs if urlparse(l).netloc != parsed.netloc]
-    result.add("sitemap 全部指向本站網域", not bad_locs,
-               f"{len(locs)} 筆" + (f"，異常：{bad_locs[:3]}" if bad_locs else ""))
+    if candidate:
+        result.skip(
+            "sitemap 全部指向本站網域",
+            f"candidate 網址；{len(locs)} 筆 loc 指向正式站才是對的",
+        )
+    else:
+        result.add("sitemap 全部指向本站網域", not bad_locs,
+                   f"{len(locs)} 筆" + (f"，異常：{bad_locs[:3]}" if bad_locs else ""))
 
     # --- 4. 安全 headers ---
     for header in REQUIRED_HEADERS:
@@ -229,6 +280,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="目標站台，例如 https://siph-lab.ntust.edu.tw")
     parser.add_argument("--allow-insecure", action="store_true",
                         help="允許 http:// 目標（僅供本機驗證）。")
+    parser.add_argument(
+        "--candidate", action="store_true",
+        help="目標是 candidate 標籤網址；跳過 canonical / sitemap 的網域比對"
+             "（它們指向正式站才是正確行為）。",
+    )
     args = parser.parse_args(argv)
 
     if not args.base_url:
@@ -236,10 +292,16 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(f"Smoke test：{args.base_url}\n")
-    result = run_smoke(args.base_url, allow_insecure=args.allow_insecure)
+    result = run_smoke(
+        args.base_url, allow_insecure=args.allow_insecure, candidate=args.candidate
+    )
 
     total = len(result.rows)
-    print(f"\n結果：{total - result.failed}/{total} 通過")
+    summary = f"\n結果：{total - result.failed}/{total} 通過"
+    if result.skipped:
+        summary += f"（另有 {len(result.skipped)} 項不適用於 candidate 網址）"
+    print(summary)
+
     if result.failed:
         print("\n部署未通過 smoke test（SAI §21.6：不得切換 traffic）。")
         return 1
