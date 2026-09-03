@@ -272,7 +272,9 @@ Semantic HTML（SAI §12.1、§17）：
       <div class="site-footer__grid">
         <div>
           {% set _fb, _fb_lang = localized(settings, 'lab_name') %}
-          <h2 class="site-footer__heading" lang="{{ _fb_lang }}">{{ _fb }}</h2>
+          {# --brand：實驗室名是專有名詞，不套 uppercase（見 main.css 說明）。 #}
+          <h2 class="site-footer__heading site-footer__heading--brand"
+              lang="{{ _fb_lang }}">{{ _fb }}</h2>
           {% set _uni, _uni_lang = localized(settings, 'university') %}
           {% set _dep, _dep_lang = localized(settings, 'department') %}
           {% if _uni or _dep %}
