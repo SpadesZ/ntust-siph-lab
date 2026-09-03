@@ -134,6 +134,26 @@ flask check publish        # 批次檢查發布門檻
 
 ---
 
+## 分享預覽圖（OG image）
+
+```bash
+python scripts/generate_og_image.py   # 產生 app/static/img/og-default.png
+```
+
+當管理者沒有在後台上傳自訂 OG 圖片時，全站分享預覽（LINE、
+Facebook、Slack 等）會回退到這張內建圖。人物頁與研究成果頁
+另有自己的圖片，不受影響。
+
+圖上的文字讀自 SiteSetting 的**實驗室名稱 / 所屬學校 / 系所**，
+但 PNG 是 build-time 產物：**在後台改完這三個欄位之後，
+必須重跑本腳本並 commit 新的 PNG**，否則分享卡片會停留在舊值。
+
+需要系統上有 CJK 字體（Windows 的微軟正黑體、macOS 的 PingFang
+或 Linux 的 Noto Sans CJK）。找不到字體或資料庫讀不到時會直接
+報錯，不會產生一張全是豆腐方塊的圖。
+
+---
+
 ## 備份與還原演練（AC-14）
 
 ```bash

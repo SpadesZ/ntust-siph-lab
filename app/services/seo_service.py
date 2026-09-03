@@ -118,6 +118,17 @@ _DESCRIPTION_MAX_ZH = 150
 #: 英文/混合內容的上限。
 _DESCRIPTION_MAX_EN = 180
 
+#: 內建的預設 OG 圖片（scripts/generate_og_image.py 產生）。
+#:
+#: 與校徽同屬「可信內建 asset」（SAI §16）：走 static/ 而非上傳
+#: 路徑，因此不受 upload allowlist 限制，也不依賴 Cloud Storage
+#: —— 即使 GCS 尚未設定，分享預覽仍有圖。
+#:
+#: 寫死 /static/ 而不用 url_for：本模組的 absolute_url 刻意不走
+#: url_for(_external=True)（理由見該函式），而 app 未自訂
+#: static_url_path，因此 /static 就是實際路徑。
+_STATIC_OG_IMAGE = "/static/img/og-default.png"
+
 
 @dataclass(frozen=True)
 class PageMeta:
@@ -363,15 +374,29 @@ class SEOService:
         return SEOService._institution_line()
 
     @staticmethod
-    def _default_og_image() -> str | None:
-        """站台預設 OG 圖片的絕對 URL。"""
+    def _default_og_image() -> str:
+        """站台預設 OG 圖片的絕對 URL。
+
+        優先序：管理者上傳的自訂圖 -> 內建品牌圖。
+
+        為什麼要有內建回退（原本沒有就回 None）：
+          og_image_path 是選填，實務上一直是空的，於是 8 個公開頁
+          有 7 頁完全不輸出 og:image —— 分享到 LINE / Facebook 只有
+          一張純文字卡片。對一個要用來招生的網站，那是第一印象。
+          人物頁與成果頁另有自己的圖，不受影響。
+
+        回傳型別從 str | None 收窄為 str：現在一定有圖可用，
+        呼叫端不必再處理 None。
+        """
         site = SEOService._site()
-        if not site.og_image_path:
-            return None
-        try:
-            return SEOService.absolute_url(get_storage().public_url(site.og_image_path))
-        except Exception:  # noqa: BLE001 - OG 圖片缺失不應讓頁面失敗
-            return None
+        if site.og_image_path:
+            try:
+                return SEOService.absolute_url(
+                    get_storage().public_url(site.og_image_path)
+                )
+            except Exception:  # noqa: BLE001 - 取不到自訂圖就用內建圖，不讓頁面失敗
+                pass
+        return SEOService.absolute_url(_STATIC_OG_IMAGE)
 
     @staticmethod
     def _image_url(object_key: str | None) -> str | None:
