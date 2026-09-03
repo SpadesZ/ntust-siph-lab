@@ -16,6 +16,7 @@
 #     sync_media_to_gcs      - 媒體同步至 Cloud Storage
 #     verify_migration       - 遷移驗證與 difference report
 #     smoke_cloud            - Cloud Run 部署後煙霧測試
+#     generate_og_image      - 產生預設分享預覽圖（OG image）
 #
 # 為什麼需要 __init__.py：
 #   讓 `from scripts import legacy_baseline` 可用。

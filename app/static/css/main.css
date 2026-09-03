@@ -482,8 +482,21 @@ main {
 /* 兩格各自帶圓角，外框不使用 overflow:hidden ——
    overflow:hidden 會把 --focus-ring 的外描邊裁掉，
    鍵盤使用者就看不到焦點落在哪一格（SAI §17）。 */
+/* min-height 38px：原本只靠 padding 撐出 26px 高。
+   WCAG 2.2 AA（2.5.8 Target Size Minimum）的下限是 24px，
+   26px 雖然過關但沒有任何餘裕，而它緊鄰的 .site-nav__link 實測
+   是 44px —— 兩個相鄰的 header 控制項高度差了 18px，手指與眼睛
+   都會感覺到那是「比較難按的那一個」。
+
+   為什麼是 38 這個數字：外框 .lang-switch 另有 2px padding 與
+   1px border，38 + 2*2 + 2*1 = 44px，與導覽連結完全等高。
+   在 ≥961px 的單列 header 裡兩者並排，高度不齊會直接看出來。
+
+   flex + align-items:center 讓文字在加高後仍垂直置中。 */
 .lang-switch__item {
-  display: block;
+  display: flex;
+  align-items: center;
+  min-height: 38px;
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-pill);
   font-size: var(--text-xs);
@@ -537,6 +550,21 @@ a.lang-switch__item:hover {
   text-transform: uppercase;
   color: #8fa8bd;
   margin-bottom: var(--space-3);
+}
+
+/* 專有名詞不套 uppercase。
+
+   這個 class 原本同時用在「聯絡與連結」這種欄位標籤（大寫合理）
+   與實驗室名稱上，於是 footer 把品牌顯示成 NTUST SIPH LAB。
+   但 SiPh 是 Silicon Photonics 的縮寫，大小寫本身帶有意義 ——
+   壓成 SIPH 之後那個意思就沒了，而且與 header 的 NTUST SiPh Lab
+   在同一個畫面裡自相矛盾。
+
+   CSS 的 text-transform 只改變顯示，不改變 DOM 文字，
+   因此螢幕閱讀器與複製貼上原本就拿到正確的大小寫；
+   這裡修的是視覺層那一份。 */
+.site-footer__heading--brand {
+  text-transform: none;
 }
 
 .site-footer__list {
@@ -1430,27 +1458,23 @@ a.lang-switch__item:hover {
   .section {
     padding-block: var(--space-12);
   }
-}
 
-@media (max-width: 640px) {
-  :root {
-    --gutter: var(--space-4);
-  }
+  /* 導覽改為上下兩列（brand + 語言切換一列、導覽一列）。
 
-  .hero__title {
-    font-size: var(--text-2xl);
-    max-width: none;
-  }
+     為什麼斷點在這裡而不是 640px：
+       單列 header 需要放下「校徽 + 品牌名 + 六個導覽項 + 語言切換」。
+       實測 860px 已經擠到極限，800px 就放不下 —— 此時 flex-wrap
+       會把最後一項「加入我們」單獨擠到第二列的最右側，變成一個
+       與其他五項失聯的孤兒，品牌名同時被壓成兩行。
+       原本 641-960px 這段沒有任何 header 專屬規則，桌機單列佈局
+       一路硬撐到 640px 才切換，破版區間就落在 790-855px。
 
-  /* 行動版導覽：header 改為上下兩列，導覽自然換行。
-     不使用漢堡選單（理由見 base.html 的設計決策說明）。
+     改在 960px 切換，與本 block 既有的 hero / split-panel /
+     output-body 轉單欄同步：版面已經收成一欄的寬度，header
+     也一併收成兩列，是同一個設計語言，不需要額外斷點。
 
-     用 flex-wrap + order 而不是 flex-direction:column ——
-     要的版面是「第一列 校徽…語言切換、第二列 導覽」，
-     column 只能給出三列堆疊，語言切換會孤零零掉在最下面，
-     離它作用的對象（整個頁面）最遠。
-     DOM 順序仍是 brand → nav → lang，順序改變只發生在視覺層，
-     而這三者互不指涉，因此不造成 Tab 順序與閱讀順序脫節。 */
+     用 flex-wrap + order 而不是 flex-direction:column 的理由，
+     見下方 640px block 保留的說明。 */
   .site-header__inner {
     flex-wrap: wrap;
     align-items: center;
@@ -1460,7 +1484,7 @@ a.lang-switch__item:hover {
 
   /* order:1 -> 排在 brand 之後、nav 之前。
      margin-left:auto 在兩種情況下都做對的事：
-       放得下時（≥360px 左右）貼在 brand 同一列的最右邊；
+       放得下時貼在 brand 同一列的最右邊；
        放不下換行時，獨佔一列並靠右 —— 靠右才不會跟左對齊的
        導覽連結看起來像同一群東西。 */
   .lang-switch {
@@ -1479,7 +1503,29 @@ a.lang-switch__item:hover {
     justify-content: flex-start;
     gap: var(--space-1) var(--space-2);
   }
+}
 
+@media (max-width: 640px) {
+  :root {
+    --gutter: var(--space-4);
+  }
+
+  .hero__title {
+    font-size: var(--text-2xl);
+    max-width: none;
+  }
+
+  /* 行動版導覽：兩列佈局本身已在 960px block 生效
+     （理由見該處）。這裡只再收緊導覽連結本身 ——
+     窄螢幕下六個項目要塞進一列的寬度，靠縮 padding 與字級。
+     不使用漢堡選單（理由見 base.html 的設計決策說明）。
+
+     兩列佈局用 flex-wrap + order 而不是 flex-direction:column ——
+     要的版面是「第一列 校徽…語言切換、第二列 導覽」，
+     column 只能給出三列堆疊，語言切換會孤零零掉在最下面，
+     離它作用的對象（整個頁面）最遠。
+     DOM 順序仍是 brand → nav → lang，順序改變只發生在視覺層，
+     而這三者互不指涉，因此不造成 Tab 順序與閱讀順序脫節。 */
   .site-nav__link {
     padding: var(--space-2);
     font-size: var(--text-xs);
