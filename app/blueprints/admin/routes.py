@@ -105,9 +105,18 @@ from flask_login import current_user, login_required
 
 from app.extensions import db
 from app.models.audit_log import AuditLog
-from app.models.mixins import AuditAction, OutputType, PersonStatus, PublishStatus
+from app.models.equipment import Equipment
+from app.models.mixins import (
+    AuditAction,
+    EquipmentCategory,
+    EquipmentOwnership,
+    OutputType,
+    PersonStatus,
+    PublishStatus,
+)
 from app.models.person import Person
 from app.models.research_output import ResearchOutput
+from app.repositories import equipment as equipment_repo
 from app.repositories import people as people_repo
 from app.repositories import research as research_repo
 from app.repositories.settings import (
@@ -116,6 +125,7 @@ from app.repositories.settings import (
     recent_changes,
     recent_security_events,
 )
+from app.services.equipment_service import EquipmentService, EquipmentServiceError
 from app.services.health_service import HealthService
 from app.services.media_service import MediaError
 from app.services.person_service import PersonService, PersonServiceError
@@ -126,6 +136,7 @@ from app.blueprints.admin.forms import (
     GRADUATE_FORM_PREFIX,
     ChangePasswordForm,
     ConfirmForm,
+    EquipmentForm,
     GraduateForm,
     PersonForm,
     ResearchForm,
@@ -765,6 +776,139 @@ def research_duplicate(output_id: int):
         "success",
     )
     return redirect(url_for("admin.research_edit", output_id=copy.id))
+
+
+# ----------------------------------------------------------------------
+# 研究設備
+# ----------------------------------------------------------------------
+
+@admin_bp.route("/equipment")
+def equipment_list():
+    """設備列表（可依歸屬與狀態篩選）。"""
+    ownership = request.args.get("ownership") or None
+    publish_status = request.args.get("publish_status") or None
+
+    return render_template(
+        "admin/equipment_list.html",
+        items=equipment_repo.admin_list(ownership=ownership, status=publish_status),
+        publish_counts=equipment_repo.count_by_status(),
+        ownerships=EquipmentOwnership.ALL,
+        ownership_labels=EquipmentOwnership.LABELS_ZH,
+        category_labels=EquipmentCategory.LABELS_ZH,
+        publish_statuses=PublishStatus.ALL,
+        active_ownership=ownership,
+        active_publish_status=publish_status,
+        confirm_form=ConfirmForm(),
+    )
+
+
+@admin_bp.route("/equipment/new", methods=["GET", "POST"])
+def equipment_new():
+    """新增設備（一律建立為草稿）。"""
+    form = EquipmentForm()
+
+    if form.validate_on_submit():
+        admin_id, ip = _actor()
+        try:
+            item = EquipmentService.create(
+                form.to_dict(), admin_user_id=admin_id, ip_address=ip
+            )
+        except EquipmentServiceError as exc:
+            flash(str(exc), "error")
+            return render_template("admin/equipment_form.html", form=form, item=None)
+
+        flash(f"已建立「{item.name_zh or item.name_en}」（草稿）。", "success")
+        return redirect(url_for("admin.equipment_edit", equipment_id=item.id))
+
+    return render_template("admin/equipment_form.html", form=form, item=None)
+
+
+@admin_bp.route("/equipment/<int:equipment_id>/edit", methods=["GET", "POST"])
+def equipment_edit(equipment_id: int):
+    """編輯設備。"""
+    item = db.session.get(Equipment, equipment_id)
+    if item is None:
+        abort(404)
+
+    form = EquipmentForm(obj=item) if request.method == "GET" else EquipmentForm()
+
+    if form.validate_on_submit():
+        admin_id, ip = _actor()
+        try:
+            EquipmentService.update(
+                item, form.to_dict(), admin_user_id=admin_id, ip_address=ip
+            )
+            flash("已儲存變更。", "success")
+            return redirect(url_for("admin.equipment_edit", equipment_id=item.id))
+        except EquipmentServiceError as exc:
+            flash(str(exc), "error")
+
+    # 發布門檻的即時狀態：讓管理者在按下發布之前就知道還缺什麼，
+    # 而不是按了才被擋。
+    validation = PublishValidator.validate_equipment(item)
+
+    return render_template(
+        "admin/equipment_form.html",
+        form=form,
+        item=item,
+        validation=validation,
+        confirm_form=ConfirmForm(),
+    )
+
+
+@admin_bp.route("/equipment/<int:equipment_id>/publish", methods=["POST"])
+def equipment_publish(equipment_id: int):
+    """發布設備（未過門檻時會被 service 擋下）。"""
+    item = db.session.get(Equipment, equipment_id)
+    if item is None:
+        abort(404)
+    if not ConfirmForm().validate_on_submit():
+        abort(400)
+
+    admin_id, ip = _actor()
+    try:
+        EquipmentService.publish(item, admin_user_id=admin_id, ip_address=ip)
+        flash(f"已發布「{item.name_zh or item.name_en}」。", "success")
+    except EquipmentServiceError as exc:
+        flash(str(exc), "error")
+
+    return redirect(url_for("admin.equipment_edit", equipment_id=equipment_id))
+
+
+@admin_bp.route("/equipment/<int:equipment_id>/unpublish", methods=["POST"])
+def equipment_unpublish(equipment_id: int):
+    """退回草稿。"""
+    item = db.session.get(Equipment, equipment_id)
+    if item is None:
+        abort(404)
+    if not ConfirmForm().validate_on_submit():
+        abort(400)
+
+    admin_id, ip = _actor()
+    EquipmentService.unpublish(item, admin_user_id=admin_id, ip_address=ip)
+    flash(f"已將「{item.name_zh or item.name_en}」退回草稿。", "success")
+    return redirect(url_for("admin.equipment_edit", equipment_id=equipment_id))
+
+
+@admin_bp.route("/equipment/<int:equipment_id>/delete", methods=["POST"])
+def equipment_delete(equipment_id: int):
+    """刪除設備。"""
+    item = db.session.get(Equipment, equipment_id)
+    if item is None:
+        abort(404)
+    if not ConfirmForm().validate_on_submit():
+        abort(400)
+
+    label = item.name_zh or item.name_en
+    admin_id, ip = _actor()
+    try:
+        EquipmentService.delete(item, admin_user_id=admin_id, ip_address=ip)
+        flash(f"已刪除「{label}」。", "success")
+    except EquipmentServiceError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("admin.equipment_edit", equipment_id=equipment_id))
+
+    return redirect(url_for("admin.equipment_list"))
 
 
 @admin_bp.route("/research/<int:output_id>/publish", methods=["POST"])

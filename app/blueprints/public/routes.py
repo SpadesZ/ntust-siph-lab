@@ -96,6 +96,7 @@ from flask import (
 )
 
 from app.models.mixins import OutputType
+from app.repositories import equipment as equipment_repo
 from app.repositories import people as people_repo
 from app.repositories import research as research_repo
 from app.repositories.settings import get_site_settings
@@ -223,6 +224,36 @@ def alumni():
         meta=meta,
         structured_data=structured_data,
         alumni_groups=groups,
+    )
+
+
+@public_bp.route("/equipment")
+def equipment_index():
+    """研究設備與可用設施，依歸屬層級分組。
+
+    分組（而非單一清單）是這一頁的核心：實驗室自有設備、所屬中心
+    的共用設施、校外可申請的平台，三者對讀者的意義完全不同。混成
+    一張清單會讓「中心的機台」讀起來像實驗室的資產 —— 對正在挑
+    實驗室的學生而言，那是實質的誤導。分組邏輯在 repository，
+    此處只負責交給模板。
+
+    沒有任何已發布項目時 grouped 是空 list，模板顯示 empty state；
+    不輸出 CollectionPage 的空 item 清單（AC-17：structured data
+    必須與可見內容一致）。
+    """
+    grouped = equipment_repo.list_published_grouped()
+    meta = SEOService.build_equipment()
+
+    structured_data = SchemaService.graph(
+        SchemaService.organization(),
+        SchemaService.breadcrumb(meta.breadcrumbs, "研究設備", meta.canonical),
+    )
+
+    return render_template(
+        "public/equipment.html",
+        meta=meta,
+        structured_data=structured_data,
+        equipment_groups=grouped,
     )
 
 

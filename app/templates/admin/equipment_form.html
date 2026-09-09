@@ -1,0 +1,160 @@
+{#
+============================================================
+NTUST SiPh Lab - Admin：研究設備表單
+
+上下游：
+  blueprints/admin/routes.py::equipment_new / equipment_edit
+    -> EquipmentForm -> EquipmentService
+    -> 本模板
+
+檔案路徑：app/templates/admin/equipment_form.html
+建立日期：2026-09-09 / 版本：v1.0
+
+模組定位：
+  設備的新增與編輯。
+
+「歸屬與出處」獨立成一個 fieldset，且排在最前面：
+  這兩個欄位一起決定這筆資料在公開頁的意義。歸屬選錯，中心的
+  機台就會顯示成實驗室的資產；沒有出處，讀者就無從查證。
+  把它們放在名稱之後、其他描述欄位之前，是因為這是填表時第一個
+  要想清楚的問題，不是最後補上的細節。
+
+本版不含照片上傳（見 EquipmentForm 的說明）。
+
+驗證方式：
+  pytest tests/test_equipment.py
+============================================================
+#}
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import field, checkbox, status_badge, confirm_button, validation_panel %}
+
+{% block page_title %}
+{{ '編輯設備：' ~ (item.name_zh or item.name_en) if item else '新增設備' }}
+{% endblock %}
+
+{% block page_desc %}
+{% if item %}
+<p class="admin-header__desc">
+  頁面錨點：<code>/equipment#equipment-{{ item.slug }}</code>
+  ・目前狀態：{{ status_badge(item.publish_status) }}
+  {% if item.publish_status == 'published' %}
+  ・<a href="{{ url_for('public.equipment_index') }}" target="_blank" rel="noopener">前台檢視 ↗</a>
+  {% endif %}
+</p>
+{% else %}
+<p class="admin-header__desc">
+  新設備預設儲存為草稿。若這台設備不是實驗室自有（例如所上中心的
+  共用設施），請務必填寫來源出處 —— 那是發布的必要條件。
+</p>
+{% endif %}
+{% endblock %}
+
+{% block header_actions %}
+<a class="btn btn--secondary btn--small" href="{{ url_for('admin.equipment_list') }}">← 返回列表</a>
+{% endblock %}
+
+{% block content %}
+
+{% if item %}
+{{ validation_panel(validation) }}
+{% endif %}
+
+<form class="admin-form" method="post"
+      action="{{ url_for('admin.equipment_edit', equipment_id=item.id) if item else url_for('admin.equipment_new') }}">
+  {{ form.csrf_token }}
+
+  {# ---------- 基本資訊 ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">基本資訊</legend>
+    <p class="form-section__hint">
+      名稱至少需填寫一個語言版本。slug 留空時會由名稱自動產生，
+      用於公開頁的錨點連結。
+    </p>
+    <div class="form-grid">
+      {{ field(form.name_zh) }}
+      {{ field(form.name_en) }}
+      {{ field(form.slug) }}
+      {{ field(form.manufacturer) }}
+      {{ field(form.model_number) }}
+    </div>
+  </fieldset>
+
+  {# ---------- 歸屬與出處（本表單最關鍵的一段） ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">歸屬與出處</legend>
+    <p class="form-section__hint">
+      公開頁依「歸屬」把設備分成三組顯示。選錯會讓讀者以為
+      別的單位的設備是本實驗室的資產 ——
+      對正在挑實驗室的學生而言，那是實質的誤導。
+    </p>
+    <div class="form-grid">
+      {{ field(form.ownership, css='select', required=true) }}
+      {{ field(form.category, css='select', required=true) }}
+    </div>
+    <div class="form-grid">
+      {{ field(form.source_note) }}
+      {{ field(form.source_url) }}
+    </div>
+  </fieldset>
+
+  {# ---------- 內容 ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">用途與規格</legend>
+    <div class="form-grid">
+      {{ field(form.description_zh) }}
+      {{ field(form.description_en) }}
+      {{ field(form.specs_zh) }}
+      {{ field(form.specs_en) }}
+      {{ field(form.location_zh) }}
+      {{ field(form.location_en) }}
+    </div>
+  </fieldset>
+
+  {# ---------- 排序 ---------- #}
+  <fieldset class="form-section">
+    <legend class="form-section__legend">顯示設定</legend>
+    <div class="form-grid">
+      {{ field(form.sort_order) }}
+      {{ checkbox(form.is_featured) }}
+    </div>
+  </fieldset>
+
+  <div class="admin-form__actions">
+    {{ form.submit(class="btn btn--primary") }}
+    <a class="btn btn--secondary" href="{{ url_for('admin.equipment_list') }}">取消</a>
+  </div>
+</form>
+
+{# ---------- 狀態操作 ---------- #}
+{% if item %}
+<section class="admin-panel" aria-labelledby="equip-publish-heading">
+  <h2 class="admin-panel__title" id="equip-publish-heading">發布</h2>
+  <p class="form-section__hint" style="margin-bottom: var(--space-4);">
+    目前狀態：{{ status_badge(item.publish_status) }}
+  </p>
+
+  {# 理由同 research_form：這一區獨立於上方表單。 #}
+  <p class="form-field__hint" style="margin-bottom: var(--space-4);">
+    ⚠️ 這裡發布的是<strong>已儲存</strong>的版本。若你剛修改了上方欄位，
+    請先按「儲存」再發布。
+  </p>
+
+  <div style="display: flex; gap: var(--space-3); flex-wrap: wrap;">
+    {% if item.publish_status != 'published' %}
+    {{ confirm_button(
+        url_for('admin.equipment_publish', equipment_id=item.id),
+        '發布到前台', confirm_form, 'btn btn--primary btn--small') }}
+    {% else %}
+    {{ confirm_button(
+        url_for('admin.equipment_unpublish', equipment_id=item.id),
+        '取消發布（退回草稿）', confirm_form, 'btn btn--secondary btn--small') }}
+    {% endif %}
+
+    {{ confirm_button(
+        url_for('admin.equipment_delete', equipment_id=item.id),
+        '刪除這筆設備', confirm_form, 'btn btn--danger btn--small') }}
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}

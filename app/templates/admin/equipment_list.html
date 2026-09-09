@@ -1,0 +1,146 @@
+{#
+============================================================
+NTUST SiPh Lab - Admin：研究設備列表
+
+上下游：
+  blueprints/admin/routes.py::equipment_list
+    -> equipment_repo.admin_list()
+    -> 本模板
+
+檔案路徑：app/templates/admin/equipment_list.html
+建立日期：2026-09-09 / 版本：v1.0
+
+模組定位：
+  設備的後台列表與篩選入口。
+
+「歸屬」欄位放在標題右邊第一欄，不是最後：
+  它決定這台設備在公開頁被歸到哪一組，也決定發布時是否需要出處。
+  管理者掃過列表時最需要先看到的就是它 —— 一台被誤標成「本實驗室
+  設備」的中心機台，在公開頁就是一句不實陳述。
+
+驗證方式：
+  pytest tests/test_equipment.py
+============================================================
+#}
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import status_badge, status_filter_bar %}
+
+{% block page_title %}研究設備{% endblock %}
+
+{% block page_desc %}
+<p class="admin-header__desc">
+  實驗室自有設備、所屬中心共用設施與可申請使用的外部平台，
+  以「歸屬」欄位區分。非本實驗室的設備必須填寫出處才能發布。
+</p>
+{% endblock %}
+
+{% block header_actions %}
+<a class="btn btn--primary btn--small" href="{{ url_for('admin.equipment_new') }}">新增設備</a>
+{% endblock %}
+
+{% block content %}
+
+{{ status_filter_bar('admin.equipment_list', publish_counts, active_publish_status,
+                     {'ownership': active_ownership} if active_ownership else {}) }}
+
+<form class="filter-bar" method="get" action="{{ url_for('admin.equipment_list') }}"
+      role="search" aria-label="設備篩選">
+
+  <div class="filter-bar__field">
+    <label class="filter-bar__label" for="filter-ownership">歸屬</label>
+    <select class="select" id="filter-ownership" name="ownership">
+      <option value="">全部歸屬</option>
+      {% for o in ownerships %}
+      <option value="{{ o }}" {% if active_ownership == o %}selected{% endif %}>
+        {{ ownership_labels[o] }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="filter-bar__field">
+    <label class="filter-bar__label" for="filter-publish">狀態</label>
+    <select class="select" id="filter-publish" name="publish_status">
+      <option value="">全部狀態</option>
+      {% set publish_labels = {'published': '已發布', 'draft': '草稿', 'archived': '已封存'} %}
+      {% for s in publish_statuses %}
+      <option value="{{ s }}" {% if active_publish_status == s %}selected{% endif %}>
+        {{ publish_labels.get(s, s) }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="filter-bar__field">
+    <button class="btn btn--primary btn--small" type="submit">套用篩選</button>
+  </div>
+
+  {% if active_ownership or active_publish_status %}
+  <div class="filter-bar__field">
+    <a class="btn btn--ghost btn--small" href="{{ url_for('admin.equipment_list') }}">清除</a>
+  </div>
+  {% endif %}
+</form>
+
+{% if items %}
+<table class="data-table">
+  <caption class="sr-only">設備列表，共 {{ items | length }} 筆</caption>
+  <thead>
+    <tr>
+      <th scope="col">名稱</th>
+      <th scope="col">歸屬</th>
+      <th scope="col">類別</th>
+      <th scope="col">狀態</th>
+      <th scope="col">出處</th>
+      <th scope="col">最後更新</th>
+      <th scope="col">操作</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in items %}
+    <tr>
+      <td>
+        <a class="data-table__title" href="{{ url_for('admin.equipment_edit', equipment_id=item.id) }}">
+          {{ item.name_zh or item.name_en }}
+        </a>
+        <span class="data-table__sub">/equipment#equipment-{{ item.slug }}</span>
+      </td>
+      <td>{{ ownership_labels[item.ownership] }}</td>
+      <td>{{ category_labels[item.category] }}</td>
+      <td>
+        {{ status_badge(item.publish_status) }}
+        {% if item.is_featured %}
+        <span class="status-badge status-badge--featured">精選</span>
+        {% endif %}
+      </td>
+      <td>
+        {#
+          出處是非自有設備的發布門檻。這一欄讓管理者不必逐筆點進去
+          就能看出哪些還缺 —— 缺的那些按發布時會被擋下。
+        #}
+        {% if item.source_note or item.source_url %}
+        <span class="data-table__sub">已填</span>
+        {% elif item.ownership != 'lab' %}
+        <span style="color: var(--color-warning);">缺出處</span>
+        {% else %}
+        <span class="data-table__sub">—</span>
+        {% endif %}
+      </td>
+      <td style="white-space: nowrap; font-size: var(--text-xs); color: var(--color-ink-faint);">
+        {{ item.updated_at | local_date }}
+      </td>
+      <td>
+        <a class="btn btn--ghost btn--small"
+           href="{{ url_for('admin.equipment_edit', equipment_id=item.id) }}">編輯</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+  <p class="empty-state__title">沒有符合條件的設備。</p>
+</div>
+{% endif %}
+
+{% endblock %}

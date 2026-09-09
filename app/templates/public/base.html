@@ -179,11 +179,19 @@ Semantic HTML（SAI §12.1、§17）：
       #}
       <nav class="site-nav" aria-label="{{ t('main_nav') }}">
         <ul class="site-nav__list">
+          {#
+            設備緊接研究成果：兩者都在回答「這個實驗室做得出什麼」，
+            而畢業生與加入我們是關於人。順序反映的是這個分界。
+            第 7 項對 header 的影響已實測：>960px 仍單列，≤960px 的
+            兩列佈局中它填進第二列既有的空位，320px 的 header 高度
+            與 6 項時完全相同（225px）。
+          #}
           {% set nav_items = [
             ('public.home', 'nav_home'),
             ('public.about', 'nav_about'),
             ('public.members', 'nav_members'),
             ('public.research_index', 'nav_research'),
+            ('public.equipment_index', 'nav_equipment'),
             ('public.alumni', 'nav_alumni'),
             ('public.join', 'nav_join')
           ] %}

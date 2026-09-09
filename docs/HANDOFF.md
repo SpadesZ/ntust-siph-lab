@@ -521,6 +521,15 @@ Flask-WTF 對 HTTPS 的 POST 會做 strict referer 檢查。
 **只要 `migrations/versions/` 新增任何檔案，G2 就不得再跳過。**
 屆時依 §7.4 的指令對 `siph_test` 執行（**不是 `neondb`**）。
 
+> 🔴 **2026-09-09：這個條件已被觸發，且尚未解除。**
+>
+> `feat/equipment-page` 新增了 `migrations/versions/6018c76001f9_add_equipment_table.py`
+> （equipment 資料表）。依上述規則，**G2 必須在部署前對 `siph_test`
+> 實際執行一次**，本機 pytest 的三個 PostgreSQL 測試目前仍是 skip。
+>
+> 這也是本專案第一個「新增資料表」的 migration：部署時必須執行
+> `flask db upgrade`，且不再能像前兩次那樣只切流量、無條件回滾。
+
 ### 本次的操作警訊（保留為紀錄）
 
 協作過程中曾提供一組指向名為 `neondb` 之資料庫的連線字串作為「測試連線」。

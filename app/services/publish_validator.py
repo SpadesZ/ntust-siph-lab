@@ -84,7 +84,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from app.models.mixins import PersonStatus, PublishStatus
+from app.models.equipment import Equipment
+from app.models.mixins import EquipmentOwnership, PersonStatus, PublishStatus
 from app.models.person import Person
 from app.models.research_output import ResearchOutput
 from app.utils.validators import is_valid_email, is_valid_url
@@ -325,5 +326,70 @@ class PublishValidator:
                 "authors_display_text",
                 "建議關聯 Lab 成員或填寫作者列，否則成果頁缺少實體關聯（SAI §13.1）。",
             )
+
+        return result
+
+    @staticmethod
+    def validate_equipment(item: Equipment) -> ValidationResult:
+        """設備發布門檻。
+
+        最重要的一條是「非本實驗室設備必須有出處」。這張表的資料
+        有兩種來源：教授提供，或從公開資料整理。後者若沒有出處，
+        頁面上就會出現一台無法查證的機台 —— 而讀者（多半是考慮
+        報考的學生）沒有辦法分辨哪一台是真的。把它設成 error 而非
+        warning，是因為 warning 不會阻擋發布，等於沒有防線。
+        """
+        result = ValidationResult()
+
+        if not (item.slug or "").strip():
+            result.add_error("slug", "slug 為必填且必須唯一。")
+
+        if not (item.name_zh or item.name_en):
+            result.add_error("name_zh", "設備名稱至少需填寫一個語言版本。")
+
+        # --- 出處（error）---
+        # LAB 層級由教授直接提供，本人即是出處，不強制填寫。
+        if item.ownership != EquipmentOwnership.LAB:
+            if not (item.source_note or "").strip() and not (item.source_url or "").strip():
+                result.add_error(
+                    "source_note",
+                    "非本實驗室的設備必須填寫出處（來源說明或連結）——"
+                    "讀者要能查證這台設備確實存在且可使用。",
+                )
+
+        # --- 照片 alt（error，比照 AC-12）---
+        if item.photo_path and not (item.photo_alt_zh or "").strip():
+            result.add_error(
+                "photo_alt_zh", "已上傳照片時，替代文字（alt）為必填（SAI §16、AC-12）。"
+            )
+
+        # --- featured 前提（error）---
+        if item.is_featured and item.publish_status != PublishStatus.PUBLISHED:
+            result.add_error(
+                "is_featured", "只有已發布的設備才能設為精選。"
+            )
+
+        # --- 連結格式（error）---
+        PublishValidator._check_urls(
+            result, [("source_url", item.source_url, "來源連結")]
+        )
+
+        # --- 建議（warning）---
+        if not (item.description_zh or item.description_en):
+            result.add_warning(
+                "description_zh",
+                "建議填寫用途說明；只有名稱的話，讀者無法判斷這台設備能做什麼。",
+            )
+
+        # 位置對非自有設備特別重要：學生需要知道去哪裡才用得到。
+        if item.ownership != EquipmentOwnership.LAB and not (
+            item.location_zh or item.location_en
+        ):
+            result.add_warning(
+                "location_zh", "建議填寫所在位置，讀者才知道這台設備在哪裡。"
+            )
+
+        if not item.name_en:
+            result.add_warning("name_en", "建議填寫英文名稱，有助於國際讀者理解。")
 
         return result

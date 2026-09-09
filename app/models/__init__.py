@@ -75,6 +75,8 @@ from __future__ import annotations
 from app.models.mixins import (  # noqa: F401
     AuditAction,
     ContributorRole,
+    EquipmentCategory,
+    EquipmentOwnership,
     MigrationStatus,
     OutputType,
     PersonStatus,
@@ -85,23 +87,28 @@ from app.models.mixins import (  # noqa: F401
 from app.models.admin_user import AdminUser  # noqa: F401
 from app.models.person import Person  # noqa: F401
 from app.models.research_output import ResearchOutput, ResearchOutputPerson  # noqa: F401
+from app.models.equipment import Equipment  # noqa: F401
 from app.models.site_setting import SiteSetting  # noqa: F401
 from app.models.redirect import Redirect  # noqa: F401
 from app.models.audit_log import AuditLog  # noqa: F401
 
-#: SAI §8 定義的 7 類核心 table 對應的 model 類別。
+#: SAI §8 定義的核心 table 對應的 model 類別。
 #: tests/test_schema.py 以此清單驗證資料表齊全。
+#: Equipment 是 SAI 原始 7 類之外新增的第 8 張表（2026-09-09）。
 __all__ = [
     "AdminUser",
     "Person",
     "ResearchOutput",
     "ResearchOutputPerson",
+    "Equipment",
     "SiteSetting",
     "Redirect",
     "AuditLog",
     # 常數
     "AuditAction",
     "ContributorRole",
+    "EquipmentCategory",
+    "EquipmentOwnership",
     "MigrationStatus",
     "OutputType",
     "PersonStatus",

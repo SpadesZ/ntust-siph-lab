@@ -371,6 +371,34 @@ def register_cli_commands(app) -> None:
         for line in summary:
             click.echo(f"  {line}")
 
+    @seed_cli.command("equipment")
+    @click.option(
+        "--force",
+        is_flag=True,
+        default=False,
+        help="已存在（相同 slug）時仍更新描述欄位（不動發布狀態）。",
+    )
+    def seed_equipment(force: bool):
+        """匯入有公開出處的設備／設施資料（一律為 draft）。
+
+        資料來自台科大官網新聞稿，內容是「所屬中心的設施」與
+        「校外共享平台」，不是實驗室自有設備 —— 後者網路上查不到，
+        只能由教授提供（SAI §2.3：不得推測產生內容）。
+
+        實際邏輯在 scripts/seed_equipment.py。
+        """
+        from scripts.seed_equipment import run_seed as run_equipment_seed
+
+        try:
+            summary = run_equipment_seed(force=force)
+        except RuntimeError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        db.session.commit()
+        click.secho("✔ 設備資料匯入完成：", fg="green")
+        for line in summary:
+            click.echo(f"  {line}")
+
     @seed_cli.command("editorial")
     @click.option(
         "--force",
