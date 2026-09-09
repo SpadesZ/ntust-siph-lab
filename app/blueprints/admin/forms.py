@@ -99,7 +99,14 @@ from wtforms import (
 )
 from wtforms.validators import DataRequired, EqualTo, Length, NumberRange, Optional, ValidationError
 
-from app.models.mixins import ContributorRole, OutputType, PersonStatus, PublishStatus
+from app.models.mixins import (
+    ContributorRole,
+    EquipmentCategory,
+    EquipmentOwnership,
+    OutputType,
+    PersonStatus,
+    PublishStatus,
+)
 from app.models.research_output import ResearchOutput
 from app.utils.validators import is_valid_email, is_valid_url
 
@@ -598,6 +605,8 @@ class ResearchForm(AdminForm):
 
     submit = SubmitField("儲存")
 
+
+
     def to_dict(self) -> dict:
         """轉為 ResearchService 可接受的欄位 dict。"""
         return {
@@ -741,6 +750,122 @@ class ResearchForm(AdminForm):
         self.hero_image_alt_zh.data = output.hero_image_alt_zh
         self.hero_image_alt_en.data = output.hero_image_alt_en
         self.sort_order.data = output.sort_order
+
+
+class EquipmentForm(AdminForm):
+    """設備／可用設施表單。
+
+    ownership 是本表單最關鍵的欄位：它決定這台設備在公開頁被歸到
+    「本實驗室設備」「所屬中心共用設施」還是「可申請使用的平台」。
+    選錯會讓中心的機台看起來像實驗室的資產 —— 那是對讀者的不實
+    陳述，不是排版問題。因此 description 直接把判斷準則寫在欄位旁，
+    而不是留給填表的人猜。
+    """
+
+    name_zh = StringField("設備名稱（中）", validators=[Optional(), Length(max=255)])
+    name_en = StringField("設備名稱（英）", validators=[Optional(), Length(max=255)])
+    slug = StringField(
+        "網址代稱 slug",
+        validators=[Optional(), Length(max=160)],
+        description="留空會依名稱自動產生。用於頁面內的錨點連結。",
+    )
+
+    ownership = SelectField(
+        "歸屬",
+        choices=[(k, EquipmentOwnership.LABELS_ZH[k]) for k in EquipmentOwnership.ALL],
+        validators=[DataRequired()],
+        description=(
+            "本實驗室設備＝實驗室自己擁有並維運；"
+            "所屬中心共用設施＝設在所上、成員可使用；"
+            "可申請使用的平台＝校外資源，需另行申請。"
+            "非本實驗室設備必須填寫下方的來源出處才能發布。"
+        ),
+    )
+    category = SelectField(
+        "類別",
+        choices=[(k, EquipmentCategory.LABELS_ZH[k]) for k in EquipmentCategory.ALL],
+        validators=[DataRequired()],
+    )
+
+    manufacturer = StringField("製造商", validators=[Optional(), Length(max=160)])
+    model_number = StringField(
+        "型號",
+        validators=[Optional(), Length(max=160)],
+        description="不確定時請留空，不要填推測值。",
+    )
+
+    description_zh = TextAreaField(
+        "用途說明（中）",
+        validators=[Optional()],
+        description="這台設備拿來做什麼。讀者多半是考慮報考的學生，寫用途比寫規格有用。",
+    )
+    description_en = TextAreaField("用途說明（英）", validators=[Optional()])
+    specs_zh = TextAreaField("規格（中）", validators=[Optional()])
+    specs_en = TextAreaField("規格（英）", validators=[Optional()])
+
+    location_zh = StringField(
+        "所在位置（中）",
+        validators=[Optional(), Length(max=255)],
+        description="非本實驗室的設備請務必填寫，讀者才知道要去哪裡使用。",
+    )
+    location_en = StringField("所在位置（英）", validators=[Optional(), Length(max=255)])
+
+    # --- 出處 ---
+    source_note = TextAreaField(
+        "來源說明",
+        validators=[Optional()],
+        description="資料出自哪裡（例如某篇官方新聞稿）。非本實驗室設備發布前必填。",
+    )
+    source_url = StringField(
+        "來源連結",
+        validators=[Optional(), Length(max=500)],
+        description="可查證的網址。與來源說明擇一即可。",
+    )
+
+    # --- Media ---
+    # 本版不提供設備照片上傳。
+    #
+    # Equipment model 已有 photo_path / photo_alt_* 欄位，
+    # PublishValidator 也已檢查「有照片就必須有 alt」，但表單這一端
+    # 尚未接上 MediaService。先送出沒有照片的版本，比送出一個
+    # 半接好的上傳流程安全：後者會讓管理者以為圖已存好。
+    # 要補時比照 ResearchForm.hero_image 與
+    # ResearchService.attach_hero_image 即可。
+
+    is_featured = BooleanField("設為精選")
+    sort_order = IntegerField("排序值", validators=[Optional(), NumberRange(min=0, max=99999)])
+
+    submit = SubmitField("儲存")
+
+    def to_dict(self) -> dict:
+        """轉為 EquipmentService 可接受的欄位 dict。
+
+        不包含 photo：檔案上傳是獨立的交易步驟，由 route 另行處理
+        （理由同 PersonForm.to_dict）。
+        """
+        return {
+            "name_zh": self.name_zh.data,
+            "name_en": self.name_en.data,
+            "slug": self.slug.data,
+            "ownership": self.ownership.data,
+            "category": self.category.data,
+            "manufacturer": self.manufacturer.data,
+            "model_number": self.model_number.data,
+            "description_zh": self.description_zh.data,
+            "description_en": self.description_en.data,
+            "specs_zh": self.specs_zh.data,
+            "specs_en": self.specs_en.data,
+            "location_zh": self.location_zh.data,
+            "location_en": self.location_en.data,
+            "source_note": self.source_note.data,
+            "source_url": self.source_url.data,
+            "is_featured": self.is_featured.data,
+            "sort_order": self.sort_order.data,
+        }
+
+    def validate_source_url(self, field) -> None:
+        if field.data and not is_valid_url(field.data):
+            raise ValidationError("請輸入有效的網址（需以 http:// 或 https:// 開頭）。")
 
 
 class SiteSettingForm(AdminForm):

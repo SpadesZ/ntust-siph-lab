@@ -106,6 +106,7 @@ from app.models.mixins import PersonStatus
 from app.models.person import Person
 from app.models.research_output import ResearchOutput
 from app.models.site_setting import SiteSetting
+from app.repositories import equipment as equipment_repo
 from app.repositories import people as people_repo
 from app.repositories import research as research_repo
 from app.storage import get_storage
@@ -527,6 +528,31 @@ class SEOService:
         )
 
     @staticmethod
+    def build_equipment() -> PageMeta:
+        """研究設備頁的 metadata。
+
+        description 依實際筆數決定措辭：沒有任何已發布設備時不能寫
+        「提供 N 項設備」，那會讓搜尋結果承諾一個點進來是空的頁面
+        （SAI §12.1：description 必須與可見內容一致）。
+        """
+        count = len(equipment_repo.list_published())
+        lab = SEOService._lab_name()
+        description = (
+            t("meta_equipment_with_count", lab=lab, n=count)
+            if count
+            else t("meta_equipment_empty", lab=lab)
+        )
+        return PageMeta(
+            title=SEOService._title_with_suffix(
+                SEOService._page_label("研究設備 Facilities", "equipment_title")
+            ),
+            description=description,
+            canonical=SEOService.absolute_url(url_for("public.equipment_index")),
+            og_image=SEOService._default_og_image(),
+            breadcrumbs=(SEOService._crumb("nav_home", "public.home"),),
+        )
+
+    @staticmethod
     def build_research_index() -> PageMeta:
         site = SEOService._site()
         count = len(research_repo.published_outputs())
@@ -685,6 +711,9 @@ class SEOService:
 
         published_people = people_repo.published_people()
         published_outputs = research_repo.published_outputs()
+        # /equipment 沒有詳細頁，因此只有列表頁進 sitemap；
+        # lastmod 取設備中最新的 updated_at（可能為 None，代表尚無已發布項目）。
+        published_equipment = equipment_repo.list_published()
 
         def _latest(items) -> datetime | None:
             """取一組實體中最新的 updated_at。"""
@@ -715,6 +744,12 @@ class SEOService:
                 "lastmod": iso_datetime(_latest(published_outputs)),
                 "changefreq": "weekly",
                 "priority": "0.9",
+            },
+            {
+                "loc": SEOService.absolute_url(url_for("public.equipment_index")),
+                "lastmod": iso_datetime(_latest(published_equipment)),
+                "changefreq": "monthly",
+                "priority": "0.7",
             },
             {
                 "loc": SEOService.absolute_url(url_for("public.alumni")),

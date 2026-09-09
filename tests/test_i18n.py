@@ -228,10 +228,16 @@ def test_lang_query_switches_interface(client):
 
     assert en.html["lang"] == HTML_LANG["en"]
 
+    # 導覽項目與順序（base.html 的 nav_items）。加減項目或調整順序時
+    # 必須同步更新這裡 —— 這個斷言的用途正是讓導覽變動無法悄悄發生。
     zh_nav = [a.get_text(strip=True) for a in zh.select(".site-nav__link")]
     en_nav = [a.get_text(strip=True) for a in en.select(".site-nav__link")]
-    assert zh_nav == ["首頁", "關於", "研究成員", "研究成果", "畢業生", "加入我們"]
-    assert en_nav == ["Home", "About", "Members", "Research", "Alumni", "Join Us"]
+    assert zh_nav == [
+        "首頁", "關於", "研究成員", "研究成果", "研究設備", "畢業生", "加入我們"
+    ]
+    assert en_nav == [
+        "Home", "About", "Members", "Research", "Facilities", "Alumni", "Join Us"
+    ]
 
 
 def test_language_choice_persists_across_requests(client):

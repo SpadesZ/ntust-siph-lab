@@ -106,6 +106,10 @@ STRINGS: dict[str, dict[str, str]] = {
     "nav_about": {"zh": "關於", "en": "About"},
     "nav_members": {"zh": "研究成員", "en": "Members"},
     "nav_research": {"zh": "研究成果", "en": "Research"},
+    # 標籤是「研究設備」而不是「實驗室設備」：這一頁同時列出實驗室
+    # 自有設備、所屬中心的共用設施與可申請的外部平台，後兩者並非
+    # 實驗室所有。用「實驗室設備」當標題會與頁面內容互相矛盾。
+    "nav_equipment": {"zh": "研究設備", "en": "Facilities"},
     "nav_alumni": {"zh": "畢業生", "en": "Alumni"},
     "nav_join": {"zh": "加入我們", "en": "Join Us"},
     # --- 首頁 ---
@@ -120,6 +124,48 @@ STRINGS: dict[str, dict[str, str]] = {
     "lab_proof": {"zh": "可驗證事實", "en": "Verifiable Facts"},
     "alumni_preview": {"zh": "畢業生", "en": "Alumni"},
     "all_alumni": {"zh": "全部畢業生 →", "en": "All alumni →"},
+    # --- 研究設備 ---
+    "equipment_title": {"zh": "研究設備與可用設施", "en": "Research Facilities"},
+    # 分組標題。三層的差別是「這台機器屬於誰」，措辭必須讓讀者一眼
+    # 分辨，不能都寫成「設備」。
+    "equipment_group_lab": {"zh": "本實驗室設備", "en": "Lab Equipment"},
+    "equipment_group_institute": {
+        "zh": "所屬中心共用設施",
+        "en": "Shared Facilities at the Institute",
+    },
+    "equipment_group_shared": {
+        "zh": "可申請使用的平台",
+        "en": "External Platforms Available on Request",
+    },
+    "equipment_group_lab_note": {
+        "zh": "由本實驗室自行維運的設備。",
+        "en": "Equipment operated by the lab itself.",
+    },
+    "equipment_group_institute_note": {
+        "zh": "設置於所屬單位、本實驗室成員可使用的設施。",
+        "en": "Facilities hosted by the institute and available to lab members.",
+    },
+    "equipment_group_shared_note": {
+        "zh": "校外共享平台，需依各平台規定申請或預約。",
+        "en": "External platforms; access requires application under each platform's rules.",
+    },
+    # 類別標籤。與 mixins.EquipmentCategory.LABELS_ZH 內容相同但用途
+    # 不同：那份給後台表單的 select choices，這份供前台雙語顯示。
+    "equipment_category_measurement": {"zh": "量測", "en": "Measurement"},
+    "equipment_category_packaging": {"zh": "封裝", "en": "Packaging"},
+    "equipment_category_inspection": {"zh": "檢測", "en": "Inspection"},
+    "equipment_category_source": {"zh": "光源與訊號源", "en": "Light & Signal Sources"},
+    "equipment_category_computing": {"zh": "運算硬體", "en": "Computing Hardware"},
+    "equipment_category_component": {"zh": "光學元件", "en": "Optical Components"},
+    "equipment_category_other": {"zh": "其他", "en": "Other"},
+    "equipment_location": {"zh": "位置", "en": "Location"},
+    "equipment_specs": {"zh": "規格", "en": "Specifications"},
+    "equipment_source": {"zh": "資料來源", "en": "Source"},
+    "equipment_source_link": {"zh": "查看來源", "en": "View source"},
+    "equipment_empty": {
+        "zh": "設備資訊整理中，尚未公開。",
+        "en": "Facility information is being compiled and has not been published yet.",
+    },
     # --- 關於 ---
     "about_title": {"zh": "關於", "en": "About"},
     "principal_investigator": {"zh": "指導教授", "en": "Principal Investigator"},
@@ -303,6 +349,17 @@ STRINGS: dict[str, dict[str, str]] = {
         "zh": "%(lab)s畢業生列表，依畢業年度呈現論文題目與研究方向。",
         "en": "Alumni of %(lab)s, listed by graduation year with thesis titles "
               "and research topics.",
+    },
+    "meta_equipment_with_count": {
+        "zh": "%(lab)s可使用的研究設備與設施共 %(n)s 項，涵蓋實驗室自有設備、"
+              "所屬中心共用設施與可申請的外部平台。",
+        "en": "%(n)s research facilities available to %(lab)s, covering lab-owned "
+              "equipment, shared facilities at the institute, and external platforms.",
+    },
+    # 沒有任何已發布項目時的措辭：不提數量、不承諾內容。
+    "meta_equipment_empty": {
+        "zh": "%(lab)s的研究設備與可使用設施說明。",
+        "en": "Research equipment and available facilities at %(lab)s.",
     },
     "meta_research_with_count": {
         "zh": "%(lab)s研究成果共 %(n)s 筆，涵蓋期刊論文、會議論文、研究專案與原型系統。",

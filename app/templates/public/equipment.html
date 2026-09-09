@@ -1,0 +1,140 @@
+{#
+============================================================
+NTUST SiPh Lab - 研究設備與可用設施
+
+上下游：
+  blueprints/public/routes.py::equipment_index
+    -> equipment_repo.list_published_grouped()
+    -> 本模板
+
+檔案路徑：
+  app/templates/public/equipment.html
+
+建立日期：2026-09-09 / 版本：v1.0
+
+模組定位：
+  依「歸屬層級」分組呈現設備，而不是單一清單。
+
+為什麼一定要分組（本頁最重要的設計）：
+  這頁的資料有三種來源 ——
+    本實驗室自有、所屬中心共用、校外可申請平台。
+  「矽光子自動化封裝設備」屬於華夏校區半導體創新與應用研究中心，
+  全台團隊都能預約使用。若與實驗室自有設備並列在同一張清單，
+  讀者（多半是正在挑實驗室的學生）會理所當然認為那是實驗室的
+  資產。那不是排版問題，是實質的不實陳述。
+
+  每一組都有一句 note 說明該層級的意義，讓「可以用到」與
+  「我們擁有」的差別在頁面上是明講的，而不是靠讀者自己推敲。
+
+出處（source）：
+  非自有設備一律顯示來源。PublishValidator.validate_equipment
+  把它設為 error 級門檻，因此已發布的項目必然有值 —— 這裡的
+  {% raw %}{% if %}{% endraw %} 只是防禦，不是預期的分支。
+
+已知限制與禁止事項：
+  1. 禁止在此顯示 draft 項目（repository 已過濾，模板不再判斷）。
+  2. 空的分組不會傳進來（見 repository 說明），因此不需要處理
+     「有標題但沒項目」的情況。
+  3. 每頁唯一 h1（AC-18）——本頁的 h1 在頁首。
+
+驗證方式：
+  pytest tests/test_equipment.py
+  人工：320px 檢視、Tab 鍵走訪
+============================================================
+#}
+{% extends "public/base.html" %}
+
+{% block content %}
+<div class="container">
+
+  <header class="section section--tight">
+    <h1 class="trace-underline">{{ t('equipment_title') }}</h1>
+  </header>
+
+  {% if equipment_groups %}
+  {% for ownership, items in equipment_groups %}
+    <section class="section section--tight" aria-labelledby="equip-{{ ownership }}-heading">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title" id="equip-{{ ownership }}-heading">
+            {{ t('equipment_group_' ~ ownership) }}
+          </h2>
+          {#
+            這句 note 是分組的意義所在：沒有它，三個標題看起來只是
+            分類標籤，讀者不會意識到「共用設施」與「本實驗室設備」
+            在所有權上的差別。
+          #}
+          <p class="text-muted">{{ t('equipment_group_' ~ ownership ~ '_note') }}</p>
+        </div>
+      </div>
+
+      <div class="card-grid card-grid--wide">
+        {% for item in items %}
+        <article class="card" id="equipment-{{ item.slug }}">
+          <div class="card__meta">
+            <span class="type-badge">{{ t('equipment_category_' ~ item.category) }}</span>
+          </div>
+
+          {% set _name, _name_lang = localized(item, 'name') %}
+          <h3 class="card__title" lang="{{ _name_lang }}">{{ _name }}</h3>
+
+          {% if item.model_number or item.manufacturer %}
+          <p class="card__meta">
+            {{ [item.manufacturer, item.model_number] | select | join(' · ') }}
+          </p>
+          {% endif %}
+
+          {% if item.photo_path %}
+          {% set _alt, _alt_lang = localized(item, 'photo_alt') %}
+          <img src="{{ media_url(item.photo_path) }}" alt="{{ _alt }}"
+               width="480" height="320" loading="lazy">
+          {% endif %}
+
+          {% set _desc, _desc_lang = localized(item, 'description') %}
+          {% if _desc %}
+          <p lang="{{ _desc_lang }}">{{ _desc }}</p>
+          {% endif %}
+
+          {% set _specs, _specs_lang = localized(item, 'specs') %}
+          {% if _specs %}
+          <p class="card__meta" lang="{{ _specs_lang }}">
+            <strong>{{ t('equipment_specs') }}：</strong>{{ _specs }}
+          </p>
+          {% endif %}
+
+          {% set _loc, _loc_lang = localized(item, 'location') %}
+          {% if _loc %}
+          <p class="card__meta" lang="{{ _loc_lang }}">
+            <strong>{{ t('equipment_location') }}：</strong>{{ _loc }}
+          </p>
+          {% endif %}
+
+          {% if item.source_note or item.source_url %}
+          <p class="card__footer"><small>
+            <strong>{{ t('equipment_source') }}：</strong>
+            {% if item.source_note %}{{ item.source_note }}{% endif %}
+            {% if item.source_url %}
+            <a href="{{ item.source_url }}" rel="noopener">{{ t('equipment_source_link') }}</a>
+            {% endif %}
+          </small></p>
+          {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+  {% endfor %}
+
+  {% else %}
+  {#
+    SAI §14.3：無資料時顯示說明，不顯示假內容。
+    這裡刻意不列出「預計會有哪些設備」——那會變成對讀者的承諾。
+  #}
+  <div class="section section--tight">
+    <div class="empty-state">
+      <p class="empty-state__title">{{ t('equipment_empty') }}</p>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -38,6 +38,9 @@
 #   PersonStatus      - faculty / current / alumni
 #   OutputType        - journal / conference / project / prototype /
 #                       simulation / dataset / other
+#   EquipmentOwnership- lab / institute / shared（歸屬層級）
+#   EquipmentCategory - measurement / packaging / inspection / source /
+#                       computing / component / other
 #   ContributorRole   - author / student / supervisor / contributor
 #   AuditAction       - AuditLog.action 允許值
 #   MigrationStatus   - legacy 遷移狀態（SAI §22.1）
@@ -241,6 +244,78 @@ class OutputType:
         SIMULATION: "Simulation Study",
         DATASET: "Dataset",
         OTHER: "Other Output",
+    }
+
+
+class EquipmentOwnership:
+    """設備的歸屬層級。
+
+    為什麼這個欄位必須存在：
+      實驗室頁面上的設備有三種來源，混在同一張清單會產生實質的
+      不實陳述。「矽光子自動化封裝設備」屬於華夏校區半導體創新與
+      應用研究中心，全台團隊都能預約；把它列為「本實驗室設備」，
+      等於對想報考的學生宣稱實驗室擁有一台它沒有的機台。
+
+      分成三層之後，同一筆資料可以誠實呈現：不是「我們有這台」，
+      而是「在這裡你能用到這台」—— 對招生的說服力相同，但不需要
+      說謊。
+
+    LAB 一律需要人工確認才會存在：網路上查不到實驗室自有設備的
+    任何公開資料（舊站、學院、研發中心、電子系實驗室列表都沒有），
+    因此這一層只能由教授提供，不得從論文或同類實驗室推測。
+    """
+
+    LAB = "lab"
+    INSTITUTE = "institute"
+    SHARED = "shared"
+    ALL = (LAB, INSTITUTE, SHARED)
+
+    LABELS_ZH = {
+        LAB: "本實驗室設備",
+        INSTITUTE: "所屬中心共用設施",
+        SHARED: "可申請使用的平台",
+    }
+    LABELS_EN = {
+        LAB: "Lab Equipment",
+        INSTITUTE: "Shared Facilities at the Institute",
+        SHARED: "External Platforms Available on Request",
+    }
+    #: 前台分組顯示順序：由「最貼近實驗室」到「最外圍」。
+    DISPLAY_ORDER = (LAB, INSTITUTE, SHARED)
+
+
+class EquipmentCategory:
+    """設備類別（用於前台標籤與後台篩選）。"""
+
+    MEASUREMENT = "measurement"
+    PACKAGING = "packaging"
+    INSPECTION = "inspection"
+    SOURCE = "source"
+    COMPUTING = "computing"
+    COMPONENT = "component"
+    OTHER = "other"
+    ALL = (
+        MEASUREMENT, PACKAGING, INSPECTION, SOURCE,
+        COMPUTING, COMPONENT, OTHER,
+    )
+
+    LABELS_ZH = {
+        MEASUREMENT: "量測",
+        PACKAGING: "封裝",
+        INSPECTION: "檢測",
+        SOURCE: "光源與訊號源",
+        COMPUTING: "運算硬體",
+        COMPONENT: "光學元件",
+        OTHER: "其他",
+    }
+    LABELS_EN = {
+        MEASUREMENT: "Measurement",
+        PACKAGING: "Packaging",
+        INSPECTION: "Inspection",
+        SOURCE: "Light & Signal Sources",
+        COMPUTING: "Computing Hardware",
+        COMPONENT: "Optical Components",
+        OTHER: "Other",
     }
 
 
