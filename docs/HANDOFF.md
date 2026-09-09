@@ -1,8 +1,8 @@
 # NTUST SiPh Lab — 上線交接文件（HANDOFF）
 
 > **檔案路徑**：`docs/HANDOFF.md`
-> **建立日期**：2026-08-17　**最後更新**：2026-09-03　**版本**：v1.2
-> **對應部署**：Cloud Run revision `ntust-siph-lab-00006-duc`
+> **建立日期**：2026-08-17　**最後更新**：2026-09-09　**版本**：v1.3
+> **對應部署**：Cloud Run revision `ntust-siph-lab-00008-qon`
 >
 > 這份文件寫給「下一個接手的人或 AI」。目標是讓你**不必重讀整段對話**
 > 就能維護這個站台。所有數字都是實測值，不是規劃值。
@@ -25,7 +25,9 @@
 | 部署分支合併進 main | ✅ 已合併 |
 | **後台表單修復（`fix/admin-form-integrity`）** | ✅ **已於 2026-09-02 部署上線** — 見 §10.2 |
 | **前端修正 + OG 分享圖（`fix/header-breakpoint-and-og-image`）** | ✅ **已於 2026-09-03 部署上線** — 見 §10.3 |
+| **研究設備頁（`feat/equipment-page`）** | ✅ **已於 2026-09-09 部署上線** — 見 §10.4 |
 | 生產後台的「系所」欄位 | ⚠️ **仍為空，需人工補填** — 見 §10.3 結尾 |
+| 設備資料（6 筆） | ⚠️ **全為 draft，前台顯示 empty state**，需教授確認後於後台發布 |
 
 ---
 
@@ -521,14 +523,12 @@ Flask-WTF 對 HTTPS 的 POST 會做 strict referer 檢查。
 **只要 `migrations/versions/` 新增任何檔案，G2 就不得再跳過。**
 屆時依 §7.4 的指令對 `siph_test` 執行（**不是 `neondb`**）。
 
-> 🔴 **2026-09-09：這個條件已被觸發，且尚未解除。**
+> ✅ **2026-09-09：這個條件曾被觸發，已於當日解除。**
 >
 > `feat/equipment-page` 新增了 `migrations/versions/6018c76001f9_add_equipment_table.py`
-> （equipment 資料表）。依上述規則，**G2 必須在部署前對 `siph_test`
-> 實際執行一次**，本機 pytest 的三個 PostgreSQL 測試目前仍是 skip。
->
-> 這也是本專案第一個「新增資料表」的 migration：部署時必須執行
-> `flask db upgrade`，且不再能像前兩次那樣只切流量、無條件回滾。
+> （equipment 資料表）。依上述規則 G2 不得跳過，已對 `siph_test`
+> 實際執行（`AbsolutePath` 確認為 `/siph_test`，正式庫 `neondb` 未受影響）。
+> 詳見 §10.4。
 
 ### 本次的操作警訊（保留為紀錄）
 
@@ -639,3 +639,89 @@ PR #2 合併後依 §5 流程部署。內容為三處前端視覺修正與全站
 
 英文名依據台科大官網英文新聞稿（2024-12 成立，以 silicon photonics 為
 重點方向）。填完後 hero eyebrow 會顯示「國立臺灣科技大學 · 先進半導體科技研究所」。
+
+---
+
+## 10.4 部署紀錄（2026-09-09，`feat/equipment-page` 上線）
+
+新增 `/equipment` 研究設備頁、主導覽第 7 項與後台 CRUD。
+**本專案第一次帶 schema 變更的部署。**
+
+| 階段 | 結果 |
+| --- | --- |
+| 本機測試 | **939 passed, 3 skipped**（原 914 + 25 個新測試） |
+| **G2（PostgreSQL）** | ✅ 已對 `siph_test` 執行（`AbsolutePath` 確認 `/siph_test`） |
+| 生產 schema 升級 | ✅ `flask db upgrade` → revision `6018c76001f9` |
+| 建置 | image tag `47fc4a5` |
+| 部署 + 切流量 | `ntust-siph-lab-00008-qon`，100% |
+| candidate smoke | **23/23 + 2 SKIP**（`--candidate` 旗標，PR #3 新增） |
+| 正式站 smoke | **25/25** |
+
+### 線上驗收（部署後實測）
+
+| 項目 | 結果 |
+| --- | --- |
+| `/equipment` | HTTP 200（部署前為 404） |
+| `<h1>` | 研究設備與可用設施 |
+| empty state | 「設備資訊整理中，尚未公開。」— 六筆資料皆為 draft，屬預期 |
+| 首頁導覽 | 含 `href="/equipment"`（第 7 項） |
+| sitemap | 含 `/equipment` |
+
+`/equipment` 回 200 同時證明生產 PostgreSQL 的 `equipment` 表確實建立 ——
+該頁渲染時會執行 `list_published_grouped()`，表不存在會直接 500。
+
+### ⚠️ 這次踩到的坑：gcloud active account
+
+第一輪部署**每一步都失敗，但看起來像成功**：
+
+- `gcloud secrets access` 被 PERMISSION_DENIED → `$URL` 是空字串
+- 於是 `TEST_POSTGRES_URL` 沒設定 → G2 顯示 `3 skipped`（不是 passed）
+- 於是 `DATABASE_URL=""` → `flask db upgrade` 連到**本機 SQLite**
+  （log 寫 `db=sqlite`、`Context impl SQLiteImpl`），生產庫沒被碰到
+- `builds submit` 與 `run deploy` 也都 PERMISSION_DENIED
+- **但兩個 smoke test 都通過**，因為它們測的是還在正常運作的舊版網站
+
+原因是 active account 變成了 `frank.src.ncku@gmail.com`，該帳號對
+`ntust-siph-lab` 專案無任何權限。修法：
+
+```powershell
+gcloud config set account rickiekuo1203@gmail.com
+gcloud config get-value account          # 必須確認輸出
+```
+
+**教訓：smoke test 全綠不代表部署成功**，它只證明線上有一個健康的站，
+不證明那是新版本。部署後請務必額外確認 revision 與新頁面：
+
+```powershell
+gcloud run services describe ntust-siph-lab --region=asia-east1 `
+  --project=ntust-siph-lab --format="value(status.traffic[0].revisionName)"
+curl.exe -s -o NUL -w "%{http_code}" https://<正式網域>/equipment
+```
+
+### 回滾方式（與前兩次不同）
+
+本次有 schema 變更，純切流量無法完整回滾：
+
+```powershell
+# 1) 先切流量回上一版
+gcloud run services update-traffic ntust-siph-lab --region=asia-east1 `
+  --to-revisions=ntust-siph-lab-00006-duc=100 --project=ntust-siph-lab
+
+# 2) 若也要退 schema（會 DROP TABLE equipment，六筆 draft 一併消失）
+$env:DATABASE_URL = <正式庫連線字串>
+.\.venv\Scripts\python.exe -m flask db downgrade
+```
+
+舊版程式碼不認識 `equipment` 表，因此只做步驟 1 也能正常運作 ——
+多一張沒人用的表不會造成錯誤。步驟 2 只在確定要清除時才需要。
+資料若誤刪，`flask seed equipment` 可重建那六筆 draft。
+
+### 尚未完成
+
+**六筆設備全部是 draft，前台顯示 empty state。** 這是刻意的：資料來自
+台科大官網新聞稿，屬於「所屬中心共用設施」與「校外共享平台」，
+需要教授確認哪些現在真的可用，才於 `/admin/equipment` 逐筆發布。
+
+**`ownership=lab`（本實驗室自有設備）一筆都沒有。** 舊站、產學創新學院、
+HiSiPIC、電子系實驗室列表與多輪搜尋都查不到這間實驗室的自有設備清單，
+該層級只能由教授提供，不得從論文或同類實驗室推測（SAI §2.3）。
