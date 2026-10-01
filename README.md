@@ -1,17 +1,50 @@
-# NTUST SiPh Lab 官方網站與內容管理系統
+# NTUST SiPh Lab
+
+A research-lab website with a small admin workspace for people, publications, and equipment pages.
+Visitors browse the lab; one administrator edits content and publishes it after review.
+
+![Lab homepage from a local legacy import](docs/assets/lab-home.png)
+
+*Real local homepage from this checkout and the repository's legacy import. Original Traditional Chinese UI; unpublished equipment drafts are not shown.*
+
+[Live site](https://ntust-siph-lab-105924420674.asia-east1.run.app) · [Local setup](#try-it-locally) · [Content guide](docs/content-guide.md)
+
+The live homepage and `/health` responded successfully on 2026-10-01. Search indexing remains blocked. The repository's final content sign-off is still incomplete; an available site does not mean the content review is complete.
+
+## Try it locally
+
+Use Docker Compose on a machine where port 8000 and the container name `siph-lab-web` are free. Local development uses SQLite and needs no cloud account.
+
+```bash
+docker compose up --build -d
+docker compose exec web flask db upgrade
+docker compose exec web flask admin create --username admin --generate
+docker compose exec web flask seed legacy
+curl -i http://127.0.0.1:8000/health
+```
+
+The generated admin password is shown once. Open `http://127.0.0.1:8000` and `/admin/login`. Legacy import is optional and retains known content gaps; use the [content guide](docs/content-guide.md) and [sign-off record](legacy/google_sites/content_signoff.md) before publishing changes.
+
+**Verified locally:** fresh SQLite migration, admin creation, legacy import, homepage, health, and browser rendering. Existing image dependencies ran the current checkout on an isolated port. A full image build, production migrations, costs, and final content sign-off were not checked or changed.
+
+## Technical details — 繁體中文
+
+The existing technical notes and operating rules follow in Traditional Chinese.
+
+### 原有技術與維護文件
 
 國立臺灣科技大學 SiPh Lab（矽光子實驗室）的官方研究網站，
 由單一管理員透過 `/admin` 維護全部公開內容。
 
-- **前台**：首頁、關於、研究成員、研究成果、畢業生、加入我們
+- **前台**：首頁、關於、研究成員、研究成果、研究設備、畢業生、加入我們
 - **後台**：單一管理帳號的輕量 CMS，不需要碰程式即可維護內容
-- **架構**：Flask + Jinja2 SSR + SQLAlchemy；本機 SQLite，正式環境 Cloud Run + Cloud SQL PostgreSQL + Cloud Storage
+- **架構**：Flask + Jinja2 SSR + SQLAlchemy；本機 SQLite，正式環境 Cloud Run + Neon PostgreSQL + Cloud Storage（ADR-013 取代原 Cloud SQL 選擇）
 
 規格書：`docs/SAI.md`（NTUST SiPh Lab SAI v1.2）
 
 ---
 
-## 快速開始
+### 快速開始
 
 ### 方式 A：Docker（建議，與正式環境同一份 image）
 
@@ -53,7 +86,7 @@ flask run --port 8000
 
 ---
 
-## 常用指令
+### 常用指令
 
 | 指令 | 用途 |
 | --- | --- |
@@ -71,7 +104,7 @@ flask run --port 8000
 
 ---
 
-## 專案結構
+### 專案結構
 
 ```
 app/
@@ -79,7 +112,7 @@ app/
 ├── config.py            環境差異的唯一收斂點
 ├── extensions.py        db / migrate / login / csrf / limiter
 ├── cli.py               flask admin / check / seed 指令
-├── models/              7 張核心表（SAI §8）
+├── models/              7 張原始核心表 + Equipment（第 8 張表）
 ├── repositories/        DB-portable 查詢邊界
 ├── services/            商業邏輯（發布、graduate、SEO、schema、媒體）
 ├── storage/             StorageBackend：local | gcs
@@ -99,7 +132,7 @@ tests/                   單元／路由／安全／SEO／a11y／可攜性測試
 
 ---
 
-## 核心設計決策
+### 核心設計決策
 
 | 決策 | 理由 |
 | --- | --- |
@@ -116,7 +149,7 @@ CMS 也是 server-rendered form。除 `/healthz` 外不建立 API，
 
 ---
 
-## 開發規則（SAI §23.1）
+### 開發規則（SAI §23.1）
 
 修改功能前請先讀：
 
@@ -145,7 +178,11 @@ CMS 也是 server-rendered form。除 `/healthz` 外不建立 API，
 
 ---
 
-## 正式部署
+### 正式部署
+
+目前資料庫選擇為 Neon PostgreSQL，見 [ADR-013](docs/adr/ADR-013-managed-postgres-provider.md)。早期規格與 runbook 的 Cloud SQL 內容保留為歷史背景，應以此 ADR 為準。
+
+2026-10-01 只讀檢查：公開首頁與 `/health` 回應 200；robots 仍禁止索引。`legacy/google_sites/content_signoff.md` 的人工簽核尚未完成。此檢查不驗證部署 revision、費用或資料完整性。
 
 開發階段**不需要**任何 GCP 資源。準備上線時再讀：
 
@@ -159,7 +196,7 @@ PostgreSQL（非 SQLite）、`STORAGE_BACKEND=gcs`、有 `SECRET_KEY`、
 
 ---
 
-## 授權與資料
+### 授權與資料
 
 - 人物照片與個人資料屬個資，**不進入版本控制**（見 `.gitignore`）
 - `legacy/google_sites/` 刻意納入版控：那是零遺漏遷移的稽核證據
