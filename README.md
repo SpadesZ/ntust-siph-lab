@@ -3,19 +3,23 @@
 A research-lab website with a small admin workspace for people, publications, and equipment pages.
 Visitors browse the lab; one administrator edits content and publishes it after review.
 
-![Lab homepage from a local legacy import](docs/assets/lab-home.png)
-
-*Real local homepage from this checkout and the repository's legacy import. Original Traditional Chinese UI; unpublished equipment drafts are not shown.*
-
 [Live site](https://ntust-siph-lab-105924420674.asia-east1.run.app) · [Local setup](#try-it-locally) · [Content guide](docs/content-guide.md)
 
 The live homepage and `/health` responded successfully on 2026-10-01. Search indexing remains blocked. The repository's final content sign-off is still incomplete; an available site does not mean the content review is complete.
+
+![Actual local lab homepage hero with the lab's research introduction](docs/assets/lab-home.png)
+
+*Real local UI from the repository's legacy import. The screenshot focuses on
+the lab introduction and browsing links. Original Traditional Chinese labels;
+no unpublished equipment draft or invented research result is shown.*
 
 ## Try it locally
 
 Use Docker Compose on a machine where port 8000 and the container name `siph-lab-web` are free. Local development uses SQLite and needs no cloud account.
 
 ```bash
+git clone https://github.com/SpadesZ/ntust-siph-lab.git
+cd ntust-siph-lab
 docker compose up --build -d
 docker compose exec web flask db upgrade
 docker compose exec web flask admin create --username admin --generate
@@ -25,11 +29,18 @@ curl -i http://127.0.0.1:8000/health
 
 The generated admin password is shown once. Open `http://127.0.0.1:8000` and `/admin/login`. Legacy import is optional and retains known content gaps; use the [content guide](docs/content-guide.md) and [sign-off record](legacy/google_sites/content_signoff.md) before publishing changes.
 
-**Verified locally:** fresh SQLite migration, admin creation, legacy import, homepage, health, and browser rendering. Existing image dependencies ran the current checkout on an isolated port. A full image build, production migrations, costs, and final content sign-off were not checked or changed.
+Use `/health` for the public health route; `/healthz` also exists for container
+checks. Local checks do not complete the content sign-off or verify a deployment.
 
 ## Technical details — 繁體中文
 
 The existing technical notes and operating rules follow in Traditional Chinese.
+
+### 本機驗證範圍
+
+2026-10-01 已驗證 fresh SQLite migration、admin creation 與 legacy import。
+2026-10-02 在同一隔離 demo，以最新 checkout 重驗首頁、`/health`、`/healthz`、robots 與真瀏覽器。
+既有 image 提供依賴；未重建完整 image、未執行 production migration 或修改內容簽核與 cloud 設定。
 
 ### 原有技術與維護文件
 
