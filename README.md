@@ -1,17 +1,20 @@
 # NTUST SiPh Lab
 
 A research-lab website with a small admin workspace for people, publications, and equipment pages.
-Visitors browse the lab; one administrator edits content and publishes it after review.
+Visitors browse the lab. One administrator uses the CMS to edit a draft, check
+its publication requirements, then make the approved content public.
 
 [Live site](https://ntust-siph-lab-105924420674.asia-east1.run.app) · [Local setup](#try-it-locally) · [Content guide](docs/content-guide.md)
 
-The live homepage and `/health` responded successfully on 2026-10-01. Search indexing remains blocked. The repository's final content sign-off is still incomplete; an available site does not mean the content review is complete.
+The public homepage and `/health` responded on **2026-10-02**. Search indexing
+remains blocked. Final content sign-off is incomplete; website availability
+does not complete that review.
 
-![Actual local lab homepage hero with the lab's research introduction](docs/assets/lab-home.png)
+<img src="docs/assets/lab-home.png" alt="Actual public homepage section showing six source-checked research directions" width="540">
 
-*Real local UI from the repository's legacy import. The screenshot focuses on
-the lab introduction and browsing links. Original Traditional Chinese labels;
-no unpublished equipment draft or invented research result is shown.*
+*Real public homepage, captured on 2026-10-02. The six research directions
+match the recorded legacy source. Original Chinese labels are unchanged.
+Editorial hero text awaiting sign-off and equipment drafts are not shown.*
 
 ## Try it locally
 
@@ -49,7 +52,7 @@ The existing technical notes and operating rules follow in Traditional Chinese.
 
 - **前台**：首頁、關於、研究成員、研究成果、研究設備、畢業生、加入我們
 - **後台**：單一管理帳號的輕量 CMS，不需要碰程式即可維護內容
-- **架構**：Flask + Jinja2 SSR + SQLAlchemy；本機 SQLite，正式環境 Cloud Run + Neon PostgreSQL + Cloud Storage（ADR-013 取代原 Cloud SQL 選擇）
+- **架構**：Flask + Jinja2 SSR + SQLAlchemy；本機 SQLite，核准的部署選擇為 Cloud Run + Neon PostgreSQL + Cloud Storage（ADR-013 取代原 Cloud SQL 選擇；本輪未重新查驗線上資料庫供應商）
 
 規格書：`docs/SAI.md`（NTUST SiPh Lab SAI v1.2）
 
@@ -155,7 +158,7 @@ tests/                   單元／路由／安全／SEO／a11y／可攜性測試
 | Legacy Preservation Gate（ADR-011） | 母站內容零遺漏；未經核准不得刪除或以推測內容取代 |
 
 **沒有前端框架、沒有 REST API。** 公開頁由 Flask 直接輸出 HTML，
-CMS 也是 server-rendered form。除 `/healthz` 外不建立 API，
+CMS 也是 server-rendered form。健康檢查提供 `/health` 與 `/healthz`；其餘內容頁不建立 REST API，
 以降低權限、CORS、版本治理與攻擊面（SAI §9.5）。
 
 ---
@@ -193,7 +196,7 @@ CMS 也是 server-rendered form。除 `/healthz` 外不建立 API，
 
 目前資料庫選擇為 Neon PostgreSQL，見 [ADR-013](docs/adr/ADR-013-managed-postgres-provider.md)。早期規格與 runbook 的 Cloud SQL 內容保留為歷史背景，應以此 ADR 為準。
 
-2026-10-01 只讀檢查：公開首頁與 `/health` 回應 200；robots 仍禁止索引。`legacy/google_sites/content_signoff.md` 的人工簽核尚未完成。此檢查不驗證部署 revision、費用或資料完整性。
+2026-10-02 本輪只讀檢查：公開首頁與 `/health` 回應 200；robots 仍禁止索引。`legacy/google_sites/content_signoff.md` 的人工簽核尚未完成。此檢查不驗證部署 revision、費用或資料完整性。
 
 開發階段**不需要**任何 GCP 資源。準備上線時再讀：
 

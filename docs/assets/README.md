@@ -1,10 +1,13 @@
-# Screenshot source
+# Public homepage screenshot
 
-`lab-home.png` is a 2026-10-02 real screenshot of this checkout's homepage hero,
-served locally with an isolated SQLite database. It selects the introduction
-and browsing links, excluding the unpublished-results empty state. Data came
-only from `flask seed legacy` and its checked-in Google Sites import. No research
-claim, person, publication or equipment was invented. Draft equipment records
-were not imported or displayed. Original Traditional Chinese UI is unchanged.
+`lab-home.png` is a real browser capture of the already-public Cloud Run homepage
+on 2026-10-02. It crops the actual research-focus section; its six topics were
+checked against LC-006 through LC-011 in
+`legacy/google_sites/content_signoff.md` and the legacy content mapping.
+Original Traditional Chinese UI labels are unchanged.
 
-The lab emblem is the repository's existing university asset; its use remains subject to university rules. This image is not a capture of the live deployment. Content sign-off remains incomplete.
+The editorial hero introduction remains pending approval in §2.4, even though
+it appears on the live page, so that region is excluded. No CMS login, equipment
+draft, data mutation or publication occurred. Public homepage and `/health`
+returned HTTP 200; robots blocks indexing. The screenshot does not attest the
+deployed revision, database provider or final content sign-off.
